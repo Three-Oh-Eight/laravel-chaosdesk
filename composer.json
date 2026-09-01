@@ -1,0 +1,72 @@
+{
+    "name": "three_oh_eight/laravel-chaosdesk",
+    "description": "Laravel SDK for ChaosDesk: drop-in Livewire support forms, automatic diagnostic context, and a server-to-server ticket ingest client",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "livewire",
+        "chaosdesk",
+        "support",
+        "helpdesk",
+        "sdk"
+    ],
+    "homepage": "https://github.com/Three-Oh-Eight/laravel-chaosdesk",
+    "support": {
+        "issues": "https://github.com/Three-Oh-Eight/laravel-chaosdesk/issues",
+        "source": "https://github.com/Three-Oh-Eight/laravel-chaosdesk"
+    },
+    "authors": [
+        {
+            "name": "Christoph Kempen",
+            "email": "christoph@downsized.nl"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0",
+        "livewire/livewire": "^3.0|^4.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.24",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0|^5.0",
+        "phpstan/phpstan": "^2.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "ThreeOhEight\\ChaosDesk\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ThreeOhEight\\ChaosDesk\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "test:types": "vendor/bin/phpstan analyse",
+        "lint": "vendor/bin/pint",
+        "lint:test": "vendor/bin/pint --test"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ThreeOhEight\\ChaosDesk\\ChaosDeskServiceProvider"
+            ],
+            "aliases": {
+                "ChaosDesk": "ThreeOhEight\\ChaosDesk\\Facades\\ChaosDesk"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
