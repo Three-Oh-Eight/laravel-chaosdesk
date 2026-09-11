@@ -21,9 +21,51 @@ return [
 
     'site_token' => env('CHAOSDESK_SITE_TOKEN'),
 
+    // Single-site shorthand for the agent client: the team API token of the
+    // "default" site. Named sites carry their own agent_token below.
+    'agent_token' => env('CHAOSDESK_AGENT_TOKEN'),
+
     'timeout' => (int) env('CHAOSDESK_TIMEOUT', 10),
 
     'retries' => (int) env('CHAOSDESK_RETRIES', 2),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sites
+    |--------------------------------------------------------------------------
+    |
+    | One application can front several ChaosDesk sites, for example one per
+    | audience ("customers", "gurus", ...). Each named site carries its own
+    | ingest token, an optional agent token (a team API token, used by the
+    | agent client) and the numeric site id ChaosDesk assigned to it.
+    |
+    | The "default" site is what ChaosDesk::class talks to unless you ask for
+    | another one with forSite(). Leaving its token or agent_token empty falls
+    | back to the single-site "site_token" and "agent_token" above, so
+    | existing installs keep working.
+    |
+    */
+
+    'sites' => [
+        'default' => [
+            'token' => env('CHAOSDESK_SITE_TOKEN'),
+            'agent_token' => env('CHAOSDESK_AGENT_TOKEN'),
+            'site_id' => null,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Migrations
+    |--------------------------------------------------------------------------
+    |
+    | Whether the package registers its own migrations. Turn this off when you
+    | bind a custom TicketStore and do not want the chaosdesk_tickets table.
+    | Publishing the migrations stays possible either way.
+    |
+    */
+
+    'migrations' => (bool) env('CHAOSDESK_MIGRATIONS', true),
 
     /*
     |--------------------------------------------------------------------------

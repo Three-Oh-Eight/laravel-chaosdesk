@@ -89,7 +89,7 @@ class SupportForm extends Component
         $email = $this->email ?: Identity::email($user);
 
         if (! $email) {
-            $this->addError('email', __('An email address is required.'));
+            $this->addError('email', __('chaosdesk::chaosdesk.form.email_required'));
 
             return;
         }
@@ -117,10 +117,11 @@ class SupportForm extends Component
 
         if (($externalId = Identity::externalId($user)) !== null) {
             $store->remember($externalId, [
+                'id' => $result['ticket']['id'] ?? null,
                 'ulid' => $result['ticket']['ulid'],
                 'access_token' => $result['access_token'],
                 'subject' => $result['ticket']['subject'],
-            ]);
+            ], $chaosDesk->site());
         }
 
         $this->submitted = true;

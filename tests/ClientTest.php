@@ -48,6 +48,41 @@ it('collects server context automatically', function (): void {
     });
 });
 
+it('lets the client report its own app version and build', function (): void {
+    Http::fake(['*' => Http::response(ticketCreatedResponse(), 201)]);
+    config(['app.name' => 'Dialed', 'chaosdesk.context.app_version' => '2.4.1']);
+
+    app(ChaosDesk::class)->createTicket(
+        ['email' => 'ada@example.test', 'subject' => 'Subject', 'message' => 'Body'],
+        clientContext: ['app' => ['version' => '3.0.0', 'build' => '512', 'name' => 'Spoofed']],
+    );
+
+    Http::assertSent(function ($request): bool {
+        $app = $request->data()['context']['app'];
+
+        return $app['version'] === '3.0.0'
+            && $app['build'] === '512'
+            && $app['name'] === 'Dialed'
+            && isset($app['environment']);
+    });
+});
+
+it('keeps the server app version when the client reports none', function (): void {
+    Http::fake(['*' => Http::response(ticketCreatedResponse(), 201)]);
+    config(['chaosdesk.context.app_version' => '2.4.1']);
+
+    app(ChaosDesk::class)->createTicket(
+        ['email' => 'ada@example.test', 'subject' => 'Subject', 'message' => 'Body'],
+        clientContext: ['app' => ['version' => '', 'build' => 381]],
+    );
+
+    Http::assertSent(function ($request): bool {
+        $app = $request->data()['context']['app'];
+
+        return $app['version'] === '2.4.1' && ! isset($app['build']);
+    });
+});
+
 it('attaches the identified user', function (): void {
     Http::fake(['*' => Http::response(ticketCreatedResponse(), 201)]);
 

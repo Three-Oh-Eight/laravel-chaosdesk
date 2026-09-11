@@ -39,7 +39,7 @@ class TicketList extends Component
 
         return $externalId === null
             ? collect()
-            : app(TicketStore::class)->forUser($externalId);
+            : app(TicketStore::class)->forUser($externalId, app(ChaosDesk::class)->site());
     }
 
     /**
@@ -89,7 +89,7 @@ class TicketList extends Component
         $reference = $this->openUlid === null ? null : $this->reference($this->openUlid);
 
         if ($reference === null) {
-            $this->error = __('That ticket could not be found.');
+            $this->error = __('chaosdesk::chaosdesk.tickets.not_found');
 
             return;
         }
@@ -118,6 +118,8 @@ class TicketList extends Component
     {
         $externalId = Identity::externalId(Auth::user());
 
-        return $externalId === null ? null : app(TicketStore::class)->find($externalId, $ulid);
+        return $externalId === null
+            ? null
+            : app(TicketStore::class)->find($externalId, $ulid, app(ChaosDesk::class)->site());
     }
 }

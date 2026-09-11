@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static array reply(string $ulid, string $accessToken, string $body)
  * @method static array attach(string $ulid, string $accessToken, \Illuminate\Http\UploadedFile $file)
  * @method static array attachContents(string $ulid, string $accessToken, string $contents, string $filename)
+ * @method static \ThreeOhEight\ChaosDesk\ChaosDesk forSite(string $name)
+ * @method static string site()
  * @method static bool isConfigured()
  * @method static void routes()
  *

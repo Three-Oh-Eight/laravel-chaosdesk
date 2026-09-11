@@ -39,7 +39,7 @@ class ContextCollector
         $context = array_filter([
             'source' => $client['source'] ?? 'web',
             'sdk' => $this->sdk(),
-            'app' => ($enabled['app'] ?? true) ? $this->appContext() : null,
+            'app' => ($enabled['app'] ?? true) ? $this->appContext((array) ($client['app'] ?? [])) : null,
             'runtime' => ($enabled['runtime'] ?? true) ? $this->runtime() : null,
             'page' => ($enabled['page'] ?? true) ? $this->page($client['page'] ?? []) : null,
             'device' => Arr::only((array) ($client['device'] ?? []), ['platform', 'os_version', 'model', 'locale', 'timezone']) ?: null,
@@ -60,13 +60,24 @@ class ContextCollector
     }
 
     /**
+     * The application as the server knows it, with the client's own version
+     * and build winning: a mobile app reports the binary the user actually
+     * runs, which the server cannot know.
+     *
+     * @param  array<string, mixed>  $client
      * @return array<string, string>
      */
-    protected function appContext(): array
+    protected function appContext(array $client = []): array
     {
+        $reported = array_filter(
+            Arr::only($client, ['version', 'build']),
+            fn (mixed $value): bool => is_string($value) && $value !== '',
+        );
+
         return array_filter([
             'name' => (string) config('app.name'),
-            'version' => $this->appVersion(),
+            'version' => $reported['version'] ?? $this->appVersion(),
+            'build' => $reported['build'] ?? null,
             'environment' => $this->app->environment(),
         ]);
     }

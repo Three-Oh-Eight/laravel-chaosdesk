@@ -25,8 +25,11 @@ class ChaosDeskServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'chaosdesk');
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'chaosdesk');
+
+        if ((bool) config('chaosdesk.migrations', true)) {
+            $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        }
 
         $this->registerComponents();
 
@@ -36,12 +39,20 @@ class ChaosDeskServiceProvider extends ServiceProvider
             ], 'chaosdesk-config');
 
             $this->publishes([
+                __DIR__.'/../database/migrations' => database_path('migrations'),
+            ], 'chaosdesk-migrations');
+
+            $this->publishes([
                 __DIR__.'/../resources/views' => resource_path('views/vendor/chaosdesk'),
             ], 'chaosdesk-views');
 
             $this->publishes([
                 __DIR__.'/../resources/js/chaosdesk.js' => resource_path('js/chaosdesk.js'),
             ], 'chaosdesk-assets');
+
+            $this->publishes([
+                __DIR__.'/../resources/lang' => $this->app->langPath('vendor/chaosdesk'),
+            ], 'chaosdesk-lang');
         }
     }
 

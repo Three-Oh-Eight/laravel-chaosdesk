@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ThreeOhEight\ChaosDesk\Storage;
 
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use ThreeOhEight\ChaosDesk\Contracts\TicketStore;
@@ -19,12 +20,13 @@ class DatabaseTicketStore implements TicketStore
 {
     public function __construct(protected string $table = 'chaosdesk_tickets') {}
 
-    public function remember(string $externalId, array $ticket): void
+    public function remember(string $externalId, array $ticket, string $site = 'default'): void
     {
         DB::table($this->table)->updateOrInsert(
-            ['ticket_ulid' => $ticket['ulid']],
+            ['site' => $site, 'ticket_ulid' => $ticket['ulid']],
             [
                 'external_id' => $externalId,
+                'ticket_id' => isset($ticket['id']) ? (int) $ticket['id'] : null,
                 'access_token' => $ticket['access_token'],
                 'subject' => $ticket['subject'],
                 'created_at' => now(),
@@ -36,24 +38,30 @@ class DatabaseTicketStore implements TicketStore
     /**
      * @return Collection<int, TicketReference>
      */
-    public function forUser(string $externalId): Collection
+    public function forUser(string $externalId, ?string $site = null): Collection
     {
-        return DB::table($this->table)
-            ->where('external_id', $externalId)
+        return $this->query($externalId, $site)
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get()
             ->map(static fn ($row): TicketReference => self::toReference($row))
             ->values();
     }
 
-    public function find(string $externalId, string $ulid): ?TicketReference
+    public function find(string $externalId, string $ulid, ?string $site = null): ?TicketReference
     {
-        $row = DB::table($this->table)
-            ->where('external_id', $externalId)
+        $row = $this->query($externalId, $site)
             ->where('ticket_ulid', $ulid)
             ->first();
 
         return $row === null ? null : self::toReference($row);
+    }
+
+    protected function query(string $externalId, ?string $site): Builder
+    {
+        return DB::table($this->table)
+            ->where('external_id', $externalId)
+            ->when($site !== null, fn (Builder $query): Builder => $query->where('site', $site));
     }
 
     private static function toReference(object $row): TicketReference
@@ -63,6 +71,8 @@ class DatabaseTicketStore implements TicketStore
             accessToken: (string) $row->access_token,
             subject: (string) $row->subject,
             createdAt: $row->created_at === null ? null : (string) $row->created_at,
+            site: (string) $row->site,
+            id: $row->ticket_id === null ? null : (int) $row->ticket_id,
         );
     }
 }

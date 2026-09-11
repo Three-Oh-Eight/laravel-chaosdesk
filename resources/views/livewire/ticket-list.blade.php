@@ -18,7 +18,7 @@
                     type="button"
                     wire:click="close"
                     class="text-sm text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
-                >{{ __('Back to all tickets') }}</button>
+                >{{ __('chaosdesk::chaosdesk.tickets.back') }}</button>
             </div>
 
             <div class="space-y-3">
@@ -32,7 +32,7 @@
                         ])
                     >
                         <div class="flex items-baseline justify-between gap-3">
-                            <span class="text-sm font-medium">{{ $message['author_name'] ?? __('Support') }}</span>
+                            <span class="text-sm font-medium">{{ $message['author_name'] ?? __('chaosdesk::chaosdesk.tickets.support') }}</span>
                             <span class="text-xs text-zinc-500">{{ $message['created_at'] ?? '' }}</span>
                         </div>
                         <p class="mt-2 whitespace-pre-wrap text-sm">{{ $message['body'] }}</p>
@@ -41,7 +41,7 @@
             </div>
 
             <form wire:submit="sendReply" class="space-y-2">
-                <label for="chaosdesk-reply" class="block text-sm font-medium">{{ __('Reply') }}</label>
+                <label for="chaosdesk-reply" class="block text-sm font-medium">{{ __('chaosdesk::chaosdesk.tickets.reply') }}</label>
                 <textarea
                     id="chaosdesk-reply"
                     wire:model="reply"
@@ -55,8 +55,8 @@
                     wire:loading.attr="disabled"
                     class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
                 >
-                    <span wire:loading.remove wire:target="sendReply">{{ __('Send reply') }}</span>
-                    <span wire:loading wire:target="sendReply">{{ __('Sending…') }}</span>
+                    <span wire:loading.remove wire:target="sendReply">{{ __('chaosdesk::chaosdesk.tickets.send_reply') }}</span>
+                    <span wire:loading wire:target="sendReply">{{ __('chaosdesk::chaosdesk.tickets.sending') }}</span>
                 </button>
             </form>
         </div>
@@ -73,7 +73,7 @@
             </button>
         @empty
             <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
-                {{ __('You have not raised any support tickets yet.') }}
+                {{ __('chaosdesk::chaosdesk.tickets.empty') }}
             </p>
         @endforelse
     @endif

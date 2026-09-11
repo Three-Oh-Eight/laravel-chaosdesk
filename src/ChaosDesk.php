@@ -8,12 +8,13 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
+use ThreeOhEight\ChaosDesk\Agent\AgentClient;
 use ThreeOhEight\ChaosDesk\Context\ContextCollector;
 use ThreeOhEight\ChaosDesk\Exceptions\ChaosDeskException;
+use ThreeOhEight\ChaosDesk\Http\Concerns\TalksToChaosDesk;
 use ThreeOhEight\ChaosDesk\Http\Controllers\TicketController;
+use ThreeOhEight\ChaosDesk\Support\SiteConfig;
 
 /**
  * Server-to-server client for the ChaosDesk ingest API.
@@ -24,11 +25,51 @@ use ThreeOhEight\ChaosDesk\Http\Controllers\TicketController;
  */
 class ChaosDesk
 {
-    public const VERSION = '1.0.0';
+    use TalksToChaosDesk;
+
+    public const VERSION = '1.1.0';
 
     public function __construct(
         protected ContextCollector $context,
+        protected string $site = SiteConfig::DEFAULT,
     ) {}
+
+    /**
+     * A client for another configured site, sharing the same context collector.
+     *
+     * A subclass that changes the constructor signature overrides this too.
+     */
+    public function forSite(string $name): static
+    {
+        /** @phpstan-ignore new.static */
+        return new static($this->context, $name);
+    }
+
+    /**
+     * The name of the site this client talks to.
+     */
+    public function site(): string
+    {
+        return $this->site;
+    }
+
+    /**
+     * An agent client acting on a site with its team API token.
+     *
+     * Defaults to the site this client talks to. Throws when that site has no
+     * agent token configured, so a misconfigured host fails before any call.
+     */
+    public function agent(?string $site = null): AgentClient
+    {
+        $site ??= $this->site;
+        $token = SiteConfig::agentToken($site);
+
+        if ($token === null) {
+            throw ChaosDeskException::missingAgentToken($site);
+        }
+
+        return new AgentClient($site, $token);
+    }
 
     /**
      * Fetch the site configuration: categories, priorities and custom fields.
@@ -91,11 +132,7 @@ class ChaosDesk
      */
     public function attach(string $ulid, string $accessToken, UploadedFile $file): array
     {
-        $response = $this->request()
-            ->attach('file', $file->get(), $file->getClientOriginalName())
-            ->post($this->url("public/tickets/{$ulid}/attachments", ['access_token' => $accessToken]));
-
-        return $this->handle($response);
+        return $this->attachContents($ulid, $accessToken, (string) $file->get(), $file->getClientOriginalName());
     }
 
     /**
@@ -105,11 +142,9 @@ class ChaosDesk
      */
     public function attachContents(string $ulid, string $accessToken, string $contents, string $filename): array
     {
-        $response = $this->request()
+        return $this->send(fn (PendingRequest $request): Response => $request
             ->attach('file', $contents, $filename)
-            ->post($this->url("public/tickets/{$ulid}/attachments", ['access_token' => $accessToken]));
-
-        return $this->handle($response);
+            ->post($this->url("public/tickets/{$ulid}/attachments", ['access_token' => $accessToken])));
     }
 
     /**
@@ -117,7 +152,7 @@ class ChaosDesk
      */
     public function isConfigured(): bool
     {
-        return (bool) config('chaosdesk.enabled') && is_string(config('chaosdesk.site_token'));
+        return (bool) config('chaosdesk.enabled') && SiteConfig::token($this->site) !== null;
     }
 
     /**
@@ -140,78 +175,18 @@ class ChaosDesk
     }
 
     /**
-     * @param  array<string, mixed>  $query
-     * @return array<string, mixed>
-     */
-    protected function get(string $path, array $query = []): array
-    {
-        return $this->handle($this->request()->get($this->url($path, $query)));
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $query
-     * @param  array<string, string>  $headers
-     * @return array<string, mixed>
-     */
-    protected function post(string $path, array $payload, array $query = [], array $headers = []): array
-    {
-        return $this->handle($this->request($headers)->post($this->url($path, $query), $payload));
-    }
-
-    /**
-     * A fresh idempotency key for one logical write.
-     *
-     * The key is set on the pending request before the retry loop, so every
-     * retry of the same call carries it and ChaosDesk replays the first
-     * response instead of creating a duplicate.
+     * The ingest API authenticates with the site token.
      *
      * @return array<string, string>
      */
-    protected function idempotencyHeaders(): array
+    protected function authenticationHeaders(): array
     {
-        return ['Idempotency-Key' => (string) Str::uuid()];
-    }
+        $token = SiteConfig::token($this->site);
 
-    /**
-     * @param  array<string, string>  $headers
-     */
-    protected function request(array $headers = []): PendingRequest
-    {
-        $token = config('chaosdesk.site_token');
-
-        if (! is_string($token) || $token === '') {
-            throw ChaosDeskException::missingToken();
+        if ($token === null) {
+            throw ChaosDeskException::missingToken($this->site);
         }
 
-        return Http::withHeaders($headers + [
-            'X-Site-Token' => $token,
-            'Accept' => 'application/json',
-            'User-Agent' => 'laravel-chaosdesk/'.self::VERSION,
-        ])
-            ->timeout((int) config('chaosdesk.timeout', 10))
-            ->retry((int) config('chaosdesk.retries', 2), 200, throw: false);
-    }
-
-    /**
-     * @param  array<string, mixed>  $query
-     */
-    protected function url(string $path, array $query = []): string
-    {
-        $url = config('chaosdesk.url').'/'.ltrim($path, '/');
-
-        return $query === [] ? $url : $url.'?'.http_build_query($query);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    protected function handle(Response $response): array
-    {
-        if ($response->failed()) {
-            throw ChaosDeskException::fromResponse($response);
-        }
-
-        return (array) $response->json();
+        return ['X-Site-Token' => $token];
     }
 }

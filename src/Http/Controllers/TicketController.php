@@ -52,6 +52,7 @@ class TicketController extends Controller
                     'category_id' => $request->validated('category_id'),
                     'priority_id' => $request->validated('priority_id'),
                     'custom_fields' => $request->validated('custom_fields'),
+                    'tags' => $request->validated('tags'),
                 ],
                 clientContext: $request->validated('context') ?? [],
                 user: $user,
@@ -65,10 +66,11 @@ class TicketController extends Controller
 
         if ($externalId !== null) {
             $this->store->remember($externalId, [
+                'id' => $result['ticket']['id'] ?? null,
                 'ulid' => $result['ticket']['ulid'],
                 'access_token' => $result['access_token'],
                 'subject' => $result['ticket']['subject'],
-            ]);
+            ], $this->chaosDesk->site());
         }
 
         return response()->json($result, 201);
@@ -83,7 +85,7 @@ class TicketController extends Controller
         }
 
         return response()->json([
-            'data' => $this->store->forUser($externalId)
+            'data' => $this->store->forUser($externalId, $this->chaosDesk->site())
                 ->map(static fn (TicketReference $ticket): array => $ticket->toArray())
                 ->all(),
         ]);
@@ -146,6 +148,8 @@ class TicketController extends Controller
     {
         $externalId = Identity::externalId(Auth::user());
 
-        return $externalId === null ? null : $this->store->find($externalId, $ulid);
+        return $externalId === null
+            ? null
+            : $this->store->find($externalId, $ulid, $this->chaosDesk->site());
     }
 }

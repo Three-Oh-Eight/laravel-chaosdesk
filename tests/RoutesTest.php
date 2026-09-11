@@ -83,6 +83,83 @@ it('validates the submission', function (): void {
         ->assertJsonValidationErrors(['subject', 'message']);
 });
 
+it('forwards well-formed tags and extra context', function (): void {
+    fakeChaosDesk();
+
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.test', 'password' => 'x']);
+
+    $this->actingAs($user)
+        ->postJson('/chaosdesk/tickets', [
+            'subject' => 'Subject',
+            'message' => 'Body',
+            'tags' => ['in-session', 'billing'],
+            'context' => ['extra' => ['chat_id' => 12, 'channel' => 'video', 'note.v2' => 'ok']],
+        ])
+        ->assertCreated();
+
+    Http::assertSent(fn ($request): bool => $request->data()['tags'] === ['in-session', 'billing']
+        && $request->data()['context']['extra']['chat_id'] === 12);
+});
+
+it('rejects malformed tags', function (array $tags): void {
+    fakeChaosDesk();
+
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.test', 'password' => 'x']);
+
+    $response = $this->actingAs($user)
+        ->postJson('/chaosdesk/tickets', ['subject' => 'Subject', 'message' => 'Body', 'tags' => $tags])
+        ->assertUnprocessable();
+
+    $keys = array_keys((array) $response->json('errors'));
+
+    expect(array_filter($keys, fn (string $key): bool => str_starts_with($key, 'tags')))->not->toBeEmpty();
+
+    Http::assertNothingSent();
+})->with([
+    'uppercase' => [['Billing']],
+    'spaces' => [['in session']],
+    'too long' => [[str_repeat('a', 33)]],
+    'duplicate' => [['billing', 'billing']],
+    'too many' => [array_map(fn (int $i): string => "tag-{$i}", range(1, 11))],
+]);
+
+it('rejects malformed extra context', function (array $extra): void {
+    fakeChaosDesk();
+
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.test', 'password' => 'x']);
+
+    $this->actingAs($user)
+        ->postJson('/chaosdesk/tickets', ['subject' => 'Subject', 'message' => 'Body', 'context' => ['extra' => $extra]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['context.extra']);
+
+    Http::assertNothingSent();
+})->with([
+    'bad key' => [['chat id' => 12]],
+    'long key' => [[str_repeat('k', 65) => 12]],
+    'nested value' => [['chat' => ['id' => 12]]],
+    'long value' => [['note' => str_repeat('x', 256)]],
+    'too many keys' => [array_fill_keys(array_map(fn (int $i): string => "key_{$i}", range(1, 21)), 1)],
+]);
+
+it('rejects an oversized or non-string app version and build', function (array $app, array $fields): void {
+    fakeChaosDesk();
+
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.test', 'password' => 'x']);
+
+    $this->actingAs($user)
+        ->postJson('/chaosdesk/tickets', ['subject' => 'Subject', 'message' => 'Body', 'context' => ['app' => $app]])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors($fields);
+
+    Http::assertNothingSent();
+})->with([
+    'long version' => [['version' => str_repeat('9', 65)], ['context.app.version']],
+    'long build' => [['build' => str_repeat('9', 65)], ['context.app.build']],
+    'array version' => [['version' => ['2', '4']], ['context.app.version']],
+    'both' => [['version' => str_repeat('9', 65), 'build' => str_repeat('9', 65)], ['context.app.version', 'context.app.build']],
+]);
+
 it('reports an upstream failure as a bad gateway', function (): void {
     fakeChaosDesk(['*/public/tickets*' => Http::response(['message' => 'Site is not verified.'], 401)]);
 
