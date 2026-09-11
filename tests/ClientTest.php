@@ -145,6 +145,50 @@ it('turns an api error into an exception carrying the validation errors', functi
     }
 });
 
+it('sends one idempotency key across retries', function (): void {
+    config(['chaosdesk.retries' => 2]);
+
+    Http::fake([
+        '*' => Http::sequence()
+            ->push(['message' => 'Server Error'], 500)
+            ->push(ticketCreatedResponse(), 201),
+    ]);
+
+    app(ChaosDesk::class)->createTicket([
+        'email' => 'ada@example.test',
+        'subject' => 'Subject',
+        'message' => 'Body',
+    ]);
+
+    $keys = idempotencyKeysSent();
+
+    expect($keys)->toHaveCount(2)
+        ->and($keys->first())->not->toBeEmpty()
+        ->and($keys->unique())->toHaveCount(1);
+});
+
+it('sends a fresh idempotency key for every ticket', function (): void {
+    Http::fake(['*' => Http::response(ticketCreatedResponse(), 201)]);
+
+    $attributes = ['email' => 'ada@example.test', 'subject' => 'Subject', 'message' => 'Body'];
+
+    app(ChaosDesk::class)->createTicket($attributes);
+    app(ChaosDesk::class)->createTicket($attributes);
+
+    $keys = idempotencyKeysSent();
+
+    expect($keys)->toHaveCount(2)
+        ->and($keys->unique())->toHaveCount(2);
+});
+
+it('sends an idempotency key when replying', function (): void {
+    Http::fake(['*' => Http::response(['message' => 'ok'], 201)]);
+
+    app(ChaosDesk::class)->reply('01JABC', 'the-access-token', 'Still broken.');
+
+    expect(idempotencyKeysSent()->first())->not->toBeEmpty();
+});
+
 it('passes the access token when reading a ticket', function (): void {
     Http::fake(['*' => Http::response(['data' => ['subject' => 'Hi']])]);
 

@@ -10,6 +10,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use ThreeOhEight\ChaosDesk\Context\ContextCollector;
 use ThreeOhEight\ChaosDesk\Exceptions\ChaosDeskException;
 use ThreeOhEight\ChaosDesk\Http\Controllers\TicketController;
@@ -55,7 +56,7 @@ class ChaosDesk
             'context' => $this->context->collect($clientContext, $user),
         ];
 
-        return $this->post('public/tickets', $payload);
+        return $this->post('public/tickets', $payload, headers: $this->idempotencyHeaders());
     }
 
     /**
@@ -75,7 +76,12 @@ class ChaosDesk
      */
     public function reply(string $ulid, string $accessToken, string $body): array
     {
-        return $this->post("public/tickets/{$ulid}/messages", ['body' => $body], ['access_token' => $accessToken]);
+        return $this->post(
+            "public/tickets/{$ulid}/messages",
+            ['body' => $body],
+            ['access_token' => $accessToken],
+            $this->idempotencyHeaders(),
+        );
     }
 
     /**
@@ -145,14 +151,32 @@ class ChaosDesk
     /**
      * @param  array<string, mixed>  $payload
      * @param  array<string, mixed>  $query
+     * @param  array<string, string>  $headers
      * @return array<string, mixed>
      */
-    protected function post(string $path, array $payload, array $query = []): array
+    protected function post(string $path, array $payload, array $query = [], array $headers = []): array
     {
-        return $this->handle($this->request()->post($this->url($path, $query), $payload));
+        return $this->handle($this->request($headers)->post($this->url($path, $query), $payload));
     }
 
-    protected function request(): PendingRequest
+    /**
+     * A fresh idempotency key for one logical write.
+     *
+     * The key is set on the pending request before the retry loop, so every
+     * retry of the same call carries it and ChaosDesk replays the first
+     * response instead of creating a duplicate.
+     *
+     * @return array<string, string>
+     */
+    protected function idempotencyHeaders(): array
+    {
+        return ['Idempotency-Key' => (string) Str::uuid()];
+    }
+
+    /**
+     * @param  array<string, string>  $headers
+     */
+    protected function request(array $headers = []): PendingRequest
     {
         $token = config('chaosdesk.site_token');
 
@@ -160,7 +184,7 @@ class ChaosDesk
             throw ChaosDeskException::missingToken();
         }
 
-        return Http::withHeaders([
+        return Http::withHeaders($headers + [
             'X-Site-Token' => $token,
             'Accept' => 'application/json',
             'User-Agent' => 'laravel-chaosdesk/'.self::VERSION,

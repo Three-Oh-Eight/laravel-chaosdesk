@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use ThreeOhEight\ChaosDesk\Tests\TestCase;
 
@@ -30,6 +31,16 @@ function fakeChaosDesk(array $overrides = []): void
         '*/public/tickets/*' => Http::response(['data' => ticketPayload()]),
         '*/public/tickets*' => Http::response(ticketCreatedResponse(), 201),
     ]);
+}
+
+/**
+ * The Idempotency-Key header of every request the fake recorded, in order.
+ *
+ * @return Collection<int, string>
+ */
+function idempotencyKeysSent(): Collection
+{
+    return Http::recorded()->map(fn (array $pair): string => $pair[0]->header('Idempotency-Key')[0] ?? '');
 }
 
 /**
