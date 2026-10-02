@@ -7,6 +7,11 @@ namespace ThreeOhEight\ChaosDesk;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use ThreeOhEight\ChaosDesk\Contracts\TicketStore;
+use ThreeOhEight\ChaosDesk\Livewire\CommunityBoard;
+use ThreeOhEight\ChaosDesk\Livewire\CommunityCharter;
+use ThreeOhEight\ChaosDesk\Livewire\CommunityNewThread;
+use ThreeOhEight\ChaosDesk\Livewire\CommunityPolls;
+use ThreeOhEight\ChaosDesk\Livewire\CommunityThread;
 use ThreeOhEight\ChaosDesk\Livewire\SupportForm;
 use ThreeOhEight\ChaosDesk\Livewire\TicketList;
 use ThreeOhEight\ChaosDesk\Storage\DatabaseTicketStore;
@@ -64,5 +69,12 @@ class ChaosDeskServiceProvider extends ServiceProvider
 
         Livewire::component((string) config('chaosdesk.components.support', 'chaosdesk-support'), SupportForm::class);
         Livewire::component((string) config('chaosdesk.components.tickets', 'chaosdesk-tickets'), TicketList::class);
+
+        // A config published before 1.2 has no community names; the defaults apply.
+        Livewire::component((string) config('chaosdesk.components.community_board', 'chaosdesk-community-board'), CommunityBoard::class);
+        Livewire::component((string) config('chaosdesk.components.community_thread', 'chaosdesk-community-thread'), CommunityThread::class);
+        Livewire::component((string) config('chaosdesk.components.community_new_thread', 'chaosdesk-community-new-thread'), CommunityNewThread::class);
+        Livewire::component((string) config('chaosdesk.components.community_polls', 'chaosdesk-community-polls'), CommunityPolls::class);
+        Livewire::component((string) config('chaosdesk.components.community_charter', 'chaosdesk-community-charter'), CommunityCharter::class);
     }
 }

@@ -4,6 +4,24 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-02
+
+### Added
+
+- Community client for the ChaosDesk Community API: `ChaosDesk::community()` (and `forSite($name)->community()`) returns a `Community\CommunityClient` that lists the site's active boards with `boards()`. `as($member)` returns a `Community\CommunityMemberClient` acting as one member: `board()`, `acceptCharter()`, `threads()`, `thread()`, `createThread()`, `reply()`, `vote()`, `unvote()`, `polls()`, `respond()` and `pollResults()`.
+- `Community\Member` (external id, name, email, optional locale), built directly or with `Member::fromUser()` from the host's user through `Support\Identity`. `as()` accepts either. The member travels base64 JSON encoded in the `X-Community-Member` header next to the site token.
+- Readonly data objects under `Community\Data`: `Board`, `Charter`, `MemberStatus`, `CharterAcceptance`, `Thread`, `Post`, `Vote`, `Poll`, `PollOption`, `PollResults` and the paginated `Page`, each with `fromArray()` and `toArray()`. Enums `Community\ThreadKind` and `Community\ThreadStatus` for filters and comparisons.
+- Every community write sends an `Idempotency-Key`: the one you pass, or a fresh one per call.
+- `Exceptions\CommunityException` (extends `ChaosDeskException`) for refusals that carry a machine code, exposed as `errorCode` with constants for `charter_not_accepted`, `charter_version_mismatch`, `member_blocked`, `thread_locked`, `thread_not_votable`, `poll_closed`, `poll_not_open`, `poll_results_hidden`, `member_identity_conflict` and the `*_not_found` codes, plus `is()`, `requiresCharterAcceptance()`, `isMemberBlocked()`, `isThreadLocked()` and `isPollUnavailable()`.
+- `Webhooks\WebhookEvent` with constants for every event ChaosDesk sends, including the community events `community.thread.status_changed`, `community.post.created`, `community.poll.opened` and `community.poll.closed`, the `X-ChaosDesk-*` header names, and `ticket()`, `community()`, `all()` and `isCommunity()`.
+- Livewire community components, styled with plain Tailwind: `Livewire\CommunityBoard` (`chaosdesk-community-board`: threads with kind and status filters, sorting, paging, upvotes and an open polls summary), `Livewire\CommunityThread` (`chaosdesk-community-thread`: a thread with replies and a reply form), `Livewire\CommunityNewThread` (`chaosdesk-community-new-thread`), `Livewire\CommunityPolls` (`chaosdesk-community-polls`: answer open polls, results of closed ones) and `Livewire\CommunityCharter` (`chaosdesk-community-charter`). Each takes the locked props `board`, `site` and `embedded` (`thread` for the thread component), acts as the signed-in user, renders the charter until the member accepted the current version, and shows refusals as translated messages. They dispatch `chaosdesk-community-charter-accepted` and `chaosdesk-community-thread-created`. A thread or poll id from the browser that is not a ulid never reaches the API, and the thread component answers 404 for a `thread` that is not one.
+- `chaosdesk.components.community_*` for the component names, `chaosdesk.community.routes.{board,thread,new_thread,polls}` for the route names the components link to (a page without a route opens inline inside the board) and `chaosdesk.community.per_page`.
+- `Community\CommunityUrls` resolves those links; `CommunityUrls::resolveUsing()` registers a callback for anything a route name cannot express.
+- `Support\CommunityText`: translated labels for kinds, statuses and sorts (a headline of the raw value when there is no label), member-facing messages for refusal codes, and charter markdown rendered with raw HTML escaped and unsafe links dropped.
+- `resources/lang/{en,nl,fr,de}/community.php` with every string the community components render, under `chaosdesk::community`, published with `--tag=chaosdesk-lang`; the community views publish with `--tag=chaosdesk-views`.
+- Test helpers `fakeChaosDeskCommunity()`, `fakeCommunityMember()`, `communityUser()`, `communityRequests()` and the community payload builders in `tests/Pest.php`.
+- `agent()` and `community()` on the facade docblock.
+
 ## [1.1.0] - 2026-09-11
 
 ### Added
@@ -41,5 +59,6 @@ All notable changes to this package are documented here. The format follows [Kee
 - Publish tags `chaosdesk-config`, `chaosdesk-views` and `chaosdesk-assets`.
 
 [Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...HEAD
+[1.2.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/releases/tag/v1.0.0

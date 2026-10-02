@@ -3,11 +3,18 @@
 declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use ThreeOhEight\ChaosDesk\Tests\Support\User;
 use ThreeOhEight\ChaosDesk\Tests\TestCase;
 
 pest()->extend(TestCase::class)->use(RefreshDatabase::class)->in(__DIR__);
+
+/**
+ * The Community API base url the test configuration points at.
+ */
+const COMMUNITY_URL = 'https://chaosdesk.test/api/v1/public/community';
 
 /**
  * Fake the ChaosDesk API.
@@ -248,6 +255,300 @@ function agentPriorityPayload(array $overrides = []): array
 function idempotencyKeysSent(): Collection
 {
     return Http::recorded()->map(fn (array $pair): string => $pair[0]->header('Idempotency-Key')[0] ?? '');
+}
+
+/**
+ * Fake the ChaosDesk Community API, with payloads shaped like its resources.
+ *
+ * Specific patterns come first because the first matching stub wins; the
+ * vote stub answers has_voted true for POST and false for DELETE, the
+ * threads stub a created thread for POST and the list for GET.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function fakeChaosDeskCommunity(array $overrides = []): void
+{
+    Http::fake($overrides + [
+        '*/public/community/boards/*/charter/accept' => Http::response([
+            'message' => 'Charter accepted.',
+            'charter' => ['version' => 2, 'accepted' => true, 'accepted_at' => '2026-10-02T10:00:00+00:00'],
+        ]),
+        '*/public/community/boards/*/threads/*/posts' => Http::response([
+            'message' => 'Reply added successfully.',
+            'post' => communityPostPayload(['ulid' => '01JPOSTNEW0000000000000000', 'body' => 'Same here.', 'is_mine' => true]),
+        ], 201),
+        '*/public/community/boards/*/threads/*/vote' => fn (Request $request) => Http::response([
+            'message' => $request->method() === 'DELETE' ? 'Vote withdrawn.' : 'Vote recorded.',
+            'vote' => [
+                'thread_ulid' => '01JTHREADPROPOSAL000000000',
+                'votes_count' => $request->method() === 'DELETE' ? 6 : 7,
+                'has_voted' => $request->method() !== 'DELETE',
+            ],
+        ]),
+        '*/public/community/boards/*/threads/*' => Http::response(['data' => communityThreadPayload([
+            'posts' => [
+                communityPostPayload(),
+                communityPostPayload([
+                    'ulid' => '01JPOSTAGENT00000000000000',
+                    'body' => 'This is planned for the next release.',
+                    'is_official' => true,
+                    'is_agent' => true,
+                    'author' => ['name' => 'Styn'],
+                ]),
+            ],
+        ])]),
+        '*/public/community/boards/*/threads*' => fn (Request $request) => $request->method() === 'POST'
+            ? Http::response([
+                'message' => 'Thread created successfully.',
+                'thread' => communityThreadPayload([
+                    'ulid' => '01JTHREADNEW00000000000000',
+                    'title' => 'Dark mode',
+                    'body' => 'Please add a dark mode.',
+                    'votes_count' => 0,
+                    'posts_count' => 0,
+                    'is_mine' => true,
+                ], withVote: false),
+            ], 201)
+            : Http::response(communityPage([
+                communityThreadPayload(),
+                communityThreadPayload([
+                    'ulid' => '01JTHREADDISCUSSION0000000',
+                    'kind' => 'discussion',
+                    'title' => 'How do you plan your week?',
+                    'votes_count' => 0,
+                    'accepts_votes' => false,
+                    'has_voted' => false,
+                ]),
+            ], total: 23, lastPage: 2)),
+        '*/public/community/boards/*/polls/*/responses' => Http::response([
+            'message' => 'Response recorded.',
+            'poll' => communityPollPayload(['my_options' => ['01JOPTIONB0000000000000000']]),
+        ]),
+        '*/public/community/boards/*/polls/*/results' => Http::response(['data' => communityPollResultsPayload()]),
+        '*/public/community/boards/*/polls*' => Http::response(communityPage([communityPollPayload()])),
+        '*/public/community/boards/*' => Http::response(['data' => communityBoardPayload()]),
+        '*/public/community/boards' => Http::response(['data' => [
+            communityBoardPayload(member: false),
+            communityBoardPayload(['slug' => 'clients', 'name' => 'Clients', 'allowed_kinds' => ['discussion']], member: false),
+        ]]),
+    ]);
+}
+
+/**
+ * Fake the Community API for a member who accepted the board's charter.
+ *
+ * The board stub only answers the board itself (config, charter, member
+ * status) and returns null for anything below it, so threads, posts, votes
+ * and polls fall through to the fakeChaosDeskCommunity() stubs. It is
+ * registered first, ahead of those. Pass board fields to override (a
+ * blocked member, other allowed kinds) and stubs that take precedence.
+ *
+ * @param  array<string, mixed>  $board
+ * @param  array<string, mixed>  $overrides
+ */
+function fakeCommunityMember(array $board = [], array $overrides = []): void
+{
+    $payload = communityBoardPayload(array_replace([
+        'charter' => ['markdown' => "# Charter\n\nBe kind.", 'version' => 2, 'accepted' => true],
+    ], $board));
+
+    fakeChaosDeskCommunity($overrides + [
+        '*/public/community/boards/*' => fn (Request $request) => preg_match('#/boards/[^/]+$#', (string) parse_url($request->url(), PHP_URL_PATH)) === 1
+            ? Http::response(['data' => $payload])
+            : null,
+    ]);
+}
+
+/**
+ * A signed-in host user acting as the community member.
+ */
+function communityUser(): User
+{
+    $user = User::create(['name' => 'Ada', 'email' => 'ada@example.test', 'password' => 'x']);
+
+    test()->actingAs($user);
+
+    return $user;
+}
+
+/**
+ * Every recorded request to the Community API, in order.
+ *
+ * @return Collection<int, Request>
+ */
+function communityRequests(): Collection
+{
+    return Http::recorded()
+        ->map(fn (array $pair): Request => $pair[0])
+        ->filter(fn (Request $request): bool => str_starts_with($request->url(), COMMUNITY_URL))
+        ->values();
+}
+
+/**
+ * A board as CommunityBoardResource returns it; with charter and member
+ * state when fetched for a member.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function communityBoardPayload(array $overrides = [], bool $member = true): array
+{
+    $board = [
+        'slug' => 'gurus',
+        'name' => 'Gurus',
+        'description' => 'Propose and discuss features with the team.',
+        'allowed_kinds' => ['discussion', 'proposal', 'bug'],
+        'charter_version' => 2,
+    ];
+
+    if ($member) {
+        $board['charter'] = ['markdown' => "# Charter\n\nBe kind.", 'version' => 2, 'accepted' => false];
+        $board['member'] = ['name' => 'Ada', 'is_blocked' => false];
+    }
+
+    // Not recursive: an override of allowed_kinds replaces the whole list.
+    return array_replace($board, $overrides);
+}
+
+/**
+ * A thread as CommunityThreadResource returns it.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function communityThreadPayload(array $overrides = [], bool $withVote = true): array
+{
+    $thread = [
+        'ulid' => '01JTHREADPROPOSAL000000000',
+        'kind' => 'proposal',
+        'title' => 'Export invoices to CSV',
+        'body' => 'An export would save me an hour a month.',
+        'status' => 'planned',
+        'decline_reason' => null,
+        'votes_count' => 7,
+        'posts_count' => 2,
+        'accepts_votes' => true,
+        'is_pinned' => true,
+        'is_locked' => false,
+        'is_mine' => false,
+        'author' => ['name' => 'Grace'],
+        'created_at' => '2026-10-01T09:00:00+00:00',
+        'last_activity_at' => '2026-10-02T08:30:00+00:00',
+    ];
+
+    if ($withVote) {
+        $thread['has_voted'] = true;
+    }
+
+    return array_replace($thread, $overrides);
+}
+
+/**
+ * A reply as CommunityPostResource returns it; a member post by default.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function communityPostPayload(array $overrides = []): array
+{
+    return array_replace([
+        'ulid' => '01JPOSTMEMBER0000000000000',
+        'body' => 'I would use this every week.',
+        'is_official' => false,
+        'is_agent' => false,
+        'is_mine' => false,
+        'author' => ['name' => 'Linus'],
+        'created_at' => '2026-10-01T10:00:00+00:00',
+    ], $overrides);
+}
+
+/**
+ * A poll as CommunityPollResource returns it, loaded for a member.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function communityPollPayload(array $overrides = []): array
+{
+    return array_replace([
+        'ulid' => '01JPOLL0000000000000000000',
+        'question' => 'What should we build next?',
+        'is_multiple_choice' => false,
+        'is_open' => true,
+        'is_closed' => false,
+        'opens_at' => null,
+        'closes_at' => '2026-10-09T12:00:00+00:00',
+        'thread_ulid' => '01JTHREADPROPOSAL000000000',
+        'options' => [
+            ['ulid' => '01JOPTIONA0000000000000000', 'label' => 'CSV export'],
+            ['ulid' => '01JOPTIONB0000000000000000', 'label' => 'Dark mode'],
+        ],
+        'my_options' => [],
+        'created_at' => '2026-10-02T09:00:00+00:00',
+    ], $overrides);
+}
+
+/**
+ * The tally of a closed poll as CommunityPollResultsResource returns it.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function communityPollResultsPayload(array $overrides = []): array
+{
+    return array_replace([
+        'ulid' => '01JPOLL0000000000000000000',
+        'question' => 'What should we build next?',
+        'is_multiple_choice' => false,
+        'closes_at' => '2026-10-09T12:00:00+00:00',
+        'respondents_count' => 8,
+        'options' => [
+            ['ulid' => '01JOPTIONA0000000000000000', 'label' => 'CSV export', 'responses_count' => 6],
+            ['ulid' => '01JOPTIONB0000000000000000', 'label' => 'Dark mode', 'responses_count' => 2],
+        ],
+    ], $overrides);
+}
+
+/**
+ * A paginated resource collection as Laravel renders it.
+ *
+ * @param  list<array<string, mixed>>  $items
+ * @return array<string, mixed>
+ */
+function communityPage(array $items, ?int $total = null, int $lastPage = 1, int $perPage = 20): array
+{
+    return [
+        'data' => $items,
+        'links' => ['first' => null, 'last' => null, 'prev' => null, 'next' => null],
+        'meta' => [
+            'current_page' => 1,
+            'from' => $items === [] ? null : 1,
+            'last_page' => $lastPage,
+            'links' => [],
+            'path' => 'https://chaosdesk.test/api/v1/public/community/boards/gurus/threads',
+            'per_page' => $perPage,
+            'to' => count($items),
+            'total' => $total ?? count($items),
+        ],
+    ];
+}
+
+/**
+ * The community member decoded from the X-Community-Member header of a request.
+ *
+ * @return array<string, mixed>|null
+ */
+function communityMemberSent(Request $request): ?array
+{
+    $header = $request->header('X-Community-Member')[0] ?? null;
+
+    if (! is_string($header)) {
+        return null;
+    }
+
+    $decoded = json_decode((string) base64_decode($header, true), true);
+
+    return is_array($decoded) ? $decoded : null;
 }
 
 /**

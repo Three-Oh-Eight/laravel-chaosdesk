@@ -112,6 +112,37 @@ return [
     'components' => [
         'support' => 'chaosdesk-support',
         'tickets' => 'chaosdesk-tickets',
+        'community_board' => 'chaosdesk-community-board',
+        'community_thread' => 'chaosdesk-community-thread',
+        'community_new_thread' => 'chaosdesk-community-new-thread',
+        'community_polls' => 'chaosdesk-community-polls',
+        'community_charter' => 'chaosdesk-community-charter',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Community
+    |--------------------------------------------------------------------------
+    |
+    | Your application decides where the community lives and who may see it.
+    | Name the routes the components link to: each route receives only the
+    | parameters it declares out of `board` (the slug), `thread` (the ulid)
+    | and `site`. A page left null shows inline inside the board component.
+    | For anything a route name cannot express, register a callback with
+    | ThreeOhEight\ChaosDesk\Community\CommunityUrls::resolveUsing().
+    |
+    */
+
+    'community' => [
+        'routes' => [
+            'board' => null,
+            'thread' => null,
+            'new_thread' => null,
+            'polls' => null,
+        ],
+
+        // Threads per page on the board, at most 50.
+        'per_page' => 20,
     ],
 
     /*

@@ -35,7 +35,7 @@ your website (Livewire)    --> ┘
 
 ## Livewire components
 
-Both are styled with plain Tailwind and carry no Flux dependency, so they render in any application.
+Both are styled with plain Tailwind and carry no Flux dependency, so they render in any application. The community board components are described under [Community components](#community-components).
 
 ```blade
 {{-- Raise a ticket --}}
@@ -262,14 +262,209 @@ Filters pass through as query parameters; list values encode as `status[]=open&s
 
 Failures throw the same `ChaosDeskException` as the ingest client, so `isUnauthorised()`, `isNotFound()`, `isValidationError()` and `isUnavailable()` apply. Asking for `ChaosDesk::agent()` on a site without an agent token throws before any request is sent.
 
+## Community
+
+ChaosDesk hosts community boards for a site: members propose and discuss features, upvote proposals, answer polls, and the team moderates and replies from the ChaosDesk agent UI. The SDK talks to the headless Community API from your backend with the site token; your application renders the board and decides who may see it. Never call the API from a browser or a mobile app.
+
+A site can have several boards (say `gurus` and `clients`), each with its own charter, allowed thread kinds and polls. Route each member only to the boards they are eligible for and pass that board's slug; ChaosDesk scopes every lookup to the board in the url, so a thread or poll from another board answers 404.
+
+```php
+use ThreeOhEight\ChaosDesk\Facades\ChaosDesk;
+
+$boards = ChaosDesk::community()->boards();              // the site's active boards, list<Board>
+
+$community = ChaosDesk::forSite('gurus')->community()->as($request->user());
+```
+
+`as()` takes your user (name and email are read from it, the external id from `ProvidesSupportContext` or the auth identifier, the locale from a `locale` attribute or the second argument) or a `Community\Member` you build yourself:
+
+```php
+use ThreeOhEight\ChaosDesk\Community\Member;
+
+$community = ChaosDesk::community()->as(new Member(
+    externalId: (string) $user->id,
+    name: $user->display_name,
+    email: $user->email,
+    locale: 'nl',
+));
+```
+
+The member rides along on every call in the `X-Community-Member` header (base64 encoded JSON); ChaosDesk creates or updates the member on the site as it goes. A user without a name or email throws `InvalidArgumentException` before any request.
+
+| Method | Returns | Does |
+| --- | --- | --- |
+| `board($slug)` | `Board` | The board with its `charter` (markdown, version, accepted) and the `member` state (blocked or not) |
+| `acceptCharter($slug, $version, $key)` | `CharterAcceptance` | Accepts the charter; pass the version the member was shown |
+| `threads($slug, $filters, $page, $perPage)` | `Page<Thread>` | Visible threads, pinned first; filters `kind`, `status`, `sort` (`activity`, `votes`, `newest`), at most 50 per page |
+| `thread($slug, $ulid)` | `Thread` | One thread with its replies in `posts` |
+| `createThread($slug, $kind, $title, $body, $key)` | `Thread` | Starts a discussion, proposal or bug report |
+| `reply($slug, $ulid, $body, $key)` | `Post` | Replies to a thread |
+| `vote($slug, $ulid, $key)` / `unvote($slug, $ulid)` | `Vote` | Upvotes a proposal or withdraws the vote; both are no-ops when repeated |
+| `polls($slug, $page, $perPage)` | `Page<Poll>` | Polls that have opened, newest first, with the member's own answer in `myOptions` |
+| `respond($slug, $pollUlid, $options, $key)` | `Poll` | Answers a poll with options or their ulids, replacing an earlier answer |
+| `pollResults($slug, $pollUlid)` | `PollResults` | The tally, once the poll has closed |
+
+```php
+use ThreeOhEight\ChaosDesk\Community\ThreadKind;
+
+$board = $community->board('gurus');
+
+if ($board->needsCharterAcceptance()) {
+    // show $board->charter->markdown, then:
+    $community->acceptCharter('gurus', $board->charter->version);
+}
+
+$page = $community->threads('gurus', ['kind' => ThreadKind::Proposal, 'sort' => 'votes']);
+
+foreach ($page as $thread) {
+    echo $thread->title.' ('.$thread->votesCount.')';
+}
+
+$thread = $community->createThread('gurus', ThreadKind::Proposal, 'Export to CSV', 'It would save me an hour a month.');
+$community->vote('gurus', $thread->ulid);
+$community->reply('gurus', $thread->ulid, 'Same here.');
+
+$poll = $community->polls('gurus')->items[0];
+$community->respond('gurus', $poll->ulid, [$poll->options[0]]);
+```
+
+All return values are readonly objects under `Community\Data` with `fromArray()` and `toArray()`, so a Livewire component can keep the array and rebuild the object. Dates are `CarbonImmutable`. `Thread::$kind` and `$status` hold the raw API value; compare with `isKind(ThreadKind::Proposal)` and `hasStatus(ThreadStatus::Planned)`. `isMine` and `hasVoted` are relative to the member.
+
+Writes send an `Idempotency-Key`. Pass your own (for example one per rendered form) to make a double submit replay the first response; without one the SDK sends a fresh key per call, which covers its own retries. ChaosDesk scopes the key to the member.
+
+A refusal with a machine code throws `Exceptions\CommunityException`, a `ChaosDeskException` with the code in `errorCode`. React on the code rather than the status:
+
+| Code | Status | Predicate |
+| --- | --- | --- |
+| `charter_not_accepted`, `charter_version_mismatch` | 403, 409 | `requiresCharterAcceptance()` |
+| `member_blocked` | 403 | `isMemberBlocked()` |
+| `thread_locked` | 403 | `isThreadLocked()` |
+| `poll_closed`, `poll_not_open`, `poll_results_hidden` | 403 | `isPollUnavailable()` |
+| `thread_not_votable` | 422 | `is(CommunityException::THREAD_NOT_VOTABLE)` |
+| `member_identity_conflict` | 409 | `is(CommunityException::MEMBER_IDENTITY_CONFLICT)` |
+| `board_not_found`, `thread_not_found`, `post_not_found`, `poll_not_found` | 404 | `isNotFound()` |
+
+```php
+use ThreeOhEight\ChaosDesk\Exceptions\CommunityException;
+
+try {
+    $community->reply('gurus', $ulid, $body);
+} catch (CommunityException $e) {
+    if ($e->requiresCharterAcceptance()) {
+        return redirect()->route('community.charter');
+    }
+
+    throw $e;
+}
+```
+
+A blocked member can still read; every write answers `member_blocked`. Failures without a code (a bad token, an invalid member header, a server error) stay a plain `ChaosDeskException`.
+
+### Community components
+
+Five Livewire components render a board for the signed-in user, styled with plain Tailwind like the support form. They act as `Auth::user()` through `as()`, so a guest sees a sign-in note and no request is sent.
+
+| Component | Class | Shows |
+| --- | --- | --- |
+| `<livewire:chaosdesk-community-board />` | `Livewire\CommunityBoard` | Threads with kind and status filters, sorting, paging, upvotes and a summary of the open polls |
+| `<livewire:chaosdesk-community-thread />` | `Livewire\CommunityThread` | One thread with its replies, official answers highlighted, and a reply form |
+| `<livewire:chaosdesk-community-new-thread />` | `Livewire\CommunityNewThread` | The form to start a thread, limited to the board's allowed kinds |
+| `<livewire:chaosdesk-community-polls />` | `Livewire\CommunityPolls` | Open polls to answer (one option or several) and the results of closed ones |
+| `<livewire:chaosdesk-community-charter />` | `Livewire\CommunityCharter` | The charter with an accept button |
+
+Every component takes these props; all of them are locked, so a tampered request cannot move a member to another board or site:
+
+| Prop | Default | Meaning |
+| --- | --- | --- |
+| `board` | | The board slug your route sends the member to (required) |
+| `site` | `null` | A site name from `chaosdesk.sites`; null for the default site |
+| `embedded` | `false` | Rendered inside the board component, which then handles navigation |
+| `thread` | | The thread ulid (`chaosdesk-community-thread` only); anything that is not a ulid answers 404 |
+
+Until the member accepted the board's current charter, the board, thread, new-thread and polls components render the charter instead. The charter markdown is rendered with raw HTML escaped and `javascript:`, `vbscript:` and `data:` links dropped. Accepting sends the version the member was shown; when the charter changed in the meantime the component loads the new text and asks again. On success it dispatches `chaosdesk-community-charter-accepted` (with `board`), which the other components on the page listen to. A new thread dispatches `chaosdesk-community-thread-created` (with `board` and `thread`) and, outside the board, redirects to the thread url when one is configured. Refusals show a translated message, never the raw API text.
+
+The board links to a thread, the new-thread form and the polls through routes you name in `config/chaosdesk.php`. A page left `null` opens inline inside the board component instead, so the board alone is a complete community:
+
+```php
+'components' => [
+    // ...
+    'community_board' => 'chaosdesk-community-board',
+    'community_thread' => 'chaosdesk-community-thread',
+    'community_new_thread' => 'chaosdesk-community-new-thread',
+    'community_polls' => 'chaosdesk-community-polls',
+    'community_charter' => 'chaosdesk-community-charter',
+],
+
+'community' => [
+    'routes' => [
+        'board' => 'guru.community',
+        'thread' => 'guru.community.thread',
+        'new_thread' => null,       // inline
+        'polls' => null,            // inline
+    ],
+
+    'per_page' => 20,               // threads per page, at most 50
+],
+```
+
+Each route receives only the parameters it declares out of `board` (the slug), `thread` (the ulid) and `site`, so a route that fixes the board in its path (`/guru/community`) needs none. For anything a route name cannot express, register a resolver, for example in a service provider's `boot()`. It receives the page (`CommunityUrls::BOARD`, `THREAD`, `NEW_THREAD` or `POLLS`), the board slug, the thread ulid (for `THREAD` only) and the site name, and returns a url, or null to show the page inline:
+
+```php
+use ThreeOhEight\ChaosDesk\Community\CommunityUrls;
+
+CommunityUrls::resolveUsing(fn (string $page, string $board, ?string $thread, ?string $site): ?string => match ($page) {
+    CommunityUrls::BOARD => url("/community/{$board}"),
+    CommunityUrls::THREAD => url("/community/{$board}/threads/{$thread}"),
+    default => null,
+});
+```
+
+Your application decides where a board lives and who may see it; ChaosDesk only checks the site token and the charter. Put each board behind your own route and gate, and pass the slug the member is eligible for:
+
+```php
+// routes/web.php
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
+
+Gate::define('community.gurus', fn ($user): bool => $user->isGuru());
+Gate::define('community.clients', fn ($user): bool => $user->isClient());
+
+Route::middleware(['auth', 'can:community.gurus'])->group(function (): void {
+    Route::view('/guru/community', 'community.board', ['board' => 'gurus'])->name('guru.community');
+    Route::get('/guru/community/{thread}', fn (string $thread) => view('community.thread', ['board' => 'gurus', 'thread' => $thread]))
+        ->name('guru.community.thread');
+});
+
+Route::middleware(['auth', 'can:community.clients'])->group(function (): void {
+    Route::view('/account/community', 'community.board', ['board' => 'clients'])->name('account.community');
+});
+```
+
+```blade
+{{-- resources/views/community/board.blade.php --}}
+<x-layouts.app>
+    <livewire:chaosdesk-community-board :board="$board" />
+</x-layouts.app>
+
+{{-- resources/views/community/thread.blade.php --}}
+<x-layouts.app>
+    <livewire:chaosdesk-community-thread :board="$board" :thread="$thread" />
+</x-layouts.app>
+```
+
+On a second site, add `site="gurus"` (a name from `chaosdesk.sites`). The `community.routes` names are global, so with boards on different paths (as above) use `resolveUsing()` to send each board to its own routes.
+
+Restyle and translate the components the same way as the support form: `php artisan vendor:publish --tag=chaosdesk-views` publishes them to `resources/views/vendor/chaosdesk/livewire/community/`, and `--tag=chaosdesk-lang` publishes the strings under `chaosdesk::community` (English, Dutch, French and German ship with the package). Posts themselves are never translated.
+
 ## Webhooks
 
-ChaosDesk can call your application on `ticket.created`, `ticket.replied`, `ticket.status_changed`, `ticket.assigned` and the SLA events (`ticket.sla_*`). Every delivery signs the raw request body with HMAC-SHA256 under the channel secret and sends the digest as `X-ChaosDesk-Signature: sha256=<hex>`, with the event name in `X-ChaosDesk-Event` and a unique id in `X-ChaosDesk-Delivery`.
+ChaosDesk can call your application on `ticket.created`, `ticket.replied`, `ticket.status_changed`, `ticket.assigned`, the SLA events (`ticket.sla_*`) and the community events `community.thread.status_changed`, `community.post.created` (an official reply), `community.poll.opened` and `community.poll.closed`. Every delivery signs the raw request body with HMAC-SHA256 under the channel secret and sends the digest as `X-ChaosDesk-Signature: sha256=<hex>`, with the event name in `X-ChaosDesk-Event` and a unique id in `X-ChaosDesk-Delivery`.
 
 Verify against the raw body, never the decoded and re-encoded payload, or the digest will not match:
 
 ```php
 use ThreeOhEight\ChaosDesk\Webhooks\Signature;
+use ThreeOhEight\ChaosDesk\Webhooks\WebhookEvent;
 
 class ChaosDeskWebhookController
 {
@@ -288,9 +483,10 @@ class ChaosDeskWebhookController
             return response()->noContent(); // already handled
         }
 
-        match ($request->header('X-ChaosDesk-Event')) {
-            'ticket.replied' => ...,
-            'ticket.status_changed' => ...,
+        match ($request->header(WebhookEvent::HEADER)) {
+            WebhookEvent::TICKET_REPLIED => ...,
+            WebhookEvent::TICKET_STATUS_CHANGED => ...,
+            WebhookEvent::COMMUNITY_POST_CREATED => ..., // metadata.board_slug names the board
             default => null,
         };
 
@@ -302,6 +498,17 @@ class ChaosDeskWebhookController
 `Signature::verify()` compares in constant time; a missing or malformed header, or an empty secret, never verifies. Exempt the route from CSRF and keep `X-ChaosDesk-Delivery` around for a while: ChaosDesk retries failed deliveries, so the same delivery id can arrive more than once.
 
 `Signature::sign($rawBody, $secret)` produces the header value ChaosDesk would send, which is what you want in a test.
+
+`Webhooks\WebhookEvent` holds a constant per event plus the header names (`HEADER`, `DELIVERY_HEADER`, `SIGNATURE_HEADER`); `WebhookEvent::community()` lists the community events and `isCommunity($event)` tells them apart. Generic deliveries carry the event details under `metadata`:
+
+| Event | Metadata |
+| --- | --- |
+| `community.thread.status_changed` | `thread_ulid`, `board_slug`, `old_status`, `new_status`, `decline_reason`, `title`, `author_external_id` |
+| `community.post.created` | `thread_ulid`, `board_slug`, `post_ulid`, `title`, `excerpt`, `author_external_id` (the thread author) |
+| `community.poll.opened` | `poll_ulid`, `board_slug`, `question`, `closes_at` |
+| `community.poll.closed` | `poll_ulid`, `board_slug`, `question`, `respondents_count`, `results` (`option_ulid`, `label`, `responses_count`) |
+
+`author_external_id` is your own id for the member, so you can notify them; no email address is ever sent.
 
 ## Upgrading to 1.1
 

@@ -10,6 +10,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
 use ThreeOhEight\ChaosDesk\Agent\AgentClient;
+use ThreeOhEight\ChaosDesk\Community\CommunityClient;
 use ThreeOhEight\ChaosDesk\Context\ContextCollector;
 use ThreeOhEight\ChaosDesk\Exceptions\ChaosDeskException;
 use ThreeOhEight\ChaosDesk\Http\Concerns\TalksToChaosDesk;
@@ -27,7 +28,7 @@ class ChaosDesk
 {
     use TalksToChaosDesk;
 
-    public const VERSION = '1.1.0';
+    public const VERSION = '1.2.0';
 
     public function __construct(
         protected ContextCollector $context,
@@ -69,6 +70,16 @@ class ChaosDesk
         }
 
         return new AgentClient($site, $token);
+    }
+
+    /**
+     * A Community API client for the site this client talks to.
+     *
+     * Lists the site's boards; call as($member) on it to act on a board.
+     */
+    public function community(): CommunityClient
+    {
+        return new CommunityClient($this->site);
     }
 
     /**
