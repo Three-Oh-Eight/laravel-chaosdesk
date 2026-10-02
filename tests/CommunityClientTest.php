@@ -9,6 +9,7 @@ use ThreeOhEight\ChaosDesk\ChaosDesk;
 use ThreeOhEight\ChaosDesk\Community\CommunityClient;
 use ThreeOhEight\ChaosDesk\Community\CommunityMemberClient;
 use ThreeOhEight\ChaosDesk\Community\Data\Board;
+use ThreeOhEight\ChaosDesk\Community\Data\Charter;
 use ThreeOhEight\ChaosDesk\Community\Data\Page;
 use ThreeOhEight\ChaosDesk\Community\Data\Poll;
 use ThreeOhEight\ChaosDesk\Community\Data\PollResults;
@@ -147,6 +148,70 @@ it('fetches a board with its charter and the member state', function (): void {
 
     Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
         && $request->url() === COMMUNITY_URL.'/boards/gurus');
+});
+
+it('sends the application locale as Accept-Language on a read and a write', function (): void {
+    fakeChaosDeskCommunity();
+    app()->setLocale('fr');
+
+    $this->community->board('gurus');
+    $this->community->createThread('gurus', ThreadKind::Discussion, 'Bonjour', 'Un sujet.');
+
+    $requests = communityRequests();
+
+    expect($requests)->toHaveCount(2)
+        ->and($requests[0]->method())->toBe('GET')
+        ->and($requests[0]->header('Accept-Language'))->toBe(['fr'])
+        ->and($requests[1]->method())->toBe('POST')
+        ->and($requests[1]->header('Accept-Language'))->toBe(['fr']);
+
+    app()->setLocale('de');
+
+    $this->community->threads('gurus');
+    $this->community->unvote('gurus', '01JTHREADPROPOSAL000000000');
+
+    $requests = communityRequests();
+
+    expect($requests)->toHaveCount(4)
+        ->and($requests[2]->header('Accept-Language'))->toBe(['de'])
+        ->and($requests[3]->method())->toBe('DELETE')
+        ->and($requests[3]->header('Accept-Language'))->toBe(['de']);
+});
+
+it('exposes the charter locale when ChaosDesk reports one', function (): void {
+    fakeChaosDeskCommunity([
+        '*/public/community/boards/*' => Http::response(['data' => communityBoardPayload([
+            'charter' => ['markdown' => '# Charte', 'version' => 2, 'accepted' => false, 'locale' => 'fr'],
+        ])]),
+    ]);
+
+    $board = $this->community->board('gurus');
+
+    expect($board->charterLocale)->toBe('fr')
+        ->and($board->charter?->locale)->toBe('fr')
+        ->and($board->toArray()['charter']['locale'])->toBe('fr')
+        ->and(Board::fromArray($board->toArray()))->toEqual($board);
+});
+
+it('leaves the charter locale null when ChaosDesk reports none', function (): void {
+    fakeChaosDeskCommunity();
+
+    $board = $this->community->board('gurus');
+
+    expect($board->charter)->not->toBeNull()
+        ->and($board->charterLocale)->toBeNull()
+        ->and($board->charter?->locale)->toBeNull()
+        ->and($board->toArray()['charter'])->not->toHaveKey('locale')
+        ->and(Board::fromArray(communityBoardPayload(member: false))->charterLocale)->toBeNull()
+        ->and(Board::fromArray(communityBoardPayload(['charter' => ['markdown' => 'x', 'version' => 1, 'accepted' => true, 'locale' => null]]))->charterLocale)->toBeNull();
+});
+
+it('keeps positional construction of Board and Charter working', function (): void {
+    $charter = new Charter('# Charter', 3, true);
+    $board = new Board('gurus', 'Gurus', null, ['discussion'], 3, $charter);
+
+    expect($charter->locale)->toBeNull()
+        ->and($board->charterLocale)->toBeNull();
 });
 
 it('accepts the charter version the member was shown', function (): void {

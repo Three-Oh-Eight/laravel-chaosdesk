@@ -4,6 +4,17 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-02
+
+### Added
+
+- `Community\CommunityMemberClient` sends `Accept-Language` with the application's current locale (`app()->getLocale()`) on every member call, reads and writes alike, so ChaosDesk can serve a board's charter in the member's language.
+- `Community\Data\Board::$charterLocale` (`?string`) and `Community\Data\Charter::$locale` (`?string`): the language the charter was served in, read from `charter.locale` and null when the API reports none (an older ChaosDesk, or the default body). Both are trailing optional constructor parameters, so existing positional callers keep working; `Charter::toArray()` only includes `locale` when it is set.
+
+### Changed
+
+- `ChaosDesk::VERSION` is `1.3.0`, reported in `context.sdk` and the `User-Agent`.
+
 ## [1.2.0] - 2026-10-02
 
 ### Added
@@ -58,7 +69,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - `Http\Controllers\TicketController` and `Http\Requests\StoreTicketRequest` behind `ChaosDesk::routes()` for mobile clients.
 - Publish tags `chaosdesk-config`, `chaosdesk-views` and `chaosdesk-assets`.
 
-[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/releases/tag/v1.0.0

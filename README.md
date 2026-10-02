@@ -291,9 +291,11 @@ $community = ChaosDesk::community()->as(new Member(
 
 The member rides along on every call in the `X-Community-Member` header (base64 encoded JSON); ChaosDesk creates or updates the member on the site as it goes. A user without a name or email throws `InvalidArgumentException` before any request.
 
+Every member call, reads and writes alike, also sends `Accept-Language` with the application's current locale (`app()->getLocale()`). ChaosDesk uses it to serve the board charter in that language when the board has a translation: `$board->charter->locale` (also `$board->charterLocale`) names the language served, and is `null` when the default charter was served or ChaosDesk reports none. The charter version is the same for every language.
+
 | Method | Returns | Does |
 | --- | --- | --- |
-| `board($slug)` | `Board` | The board with its `charter` (markdown, version, accepted) and the `member` state (blocked or not) |
+| `board($slug)` | `Board` | The board with its `charter` (markdown, version, accepted, locale) and the `member` state (blocked or not) |
 | `acceptCharter($slug, $version, $key)` | `CharterAcceptance` | Accepts the charter; pass the version the member was shown |
 | `threads($slug, $filters, $page, $perPage)` | `Page<Thread>` | Visible threads, pinned first; filters `kind`, `status`, `sort` (`activity`, `votes`, `newest`), at most 50 per page |
 | `thread($slug, $ulid)` | `Thread` | One thread with its replies in `posts` |

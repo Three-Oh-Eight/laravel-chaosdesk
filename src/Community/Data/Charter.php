@@ -6,6 +6,9 @@ namespace ThreeOhEight\ChaosDesk\Community\Data;
 
 /**
  * A board's charter and whether the acting member accepted its current version.
+ *
+ * `locale` is the language ChaosDesk served the markdown in; null when the
+ * default body was served or the API does not report it.
  */
 final readonly class Charter
 {
@@ -13,6 +16,7 @@ final readonly class Charter
         public ?string $markdown,
         public int $version,
         public bool $accepted,
+        public ?string $locale = null,
     ) {}
 
     /**
@@ -24,11 +28,14 @@ final readonly class Charter
             Values::nullableString($data, 'markdown'),
             Values::int($data, 'version', 1),
             Values::bool($data, 'accepted'),
+            Values::nullableString($data, 'locale'),
         );
     }
 
     /**
-     * @return array{markdown: string|null, version: int, accepted: bool}
+     * The `locale` key is only present when the API reported one.
+     *
+     * @return array{markdown: string|null, version: int, accepted: bool, locale?: string}
      */
     public function toArray(): array
     {
@@ -36,6 +43,6 @@ final readonly class Charter
             'markdown' => $this->markdown,
             'version' => $this->version,
             'accepted' => $this->accepted,
-        ];
+        ] + ($this->locale === null ? [] : ['locale' => $this->locale]);
     }
 }

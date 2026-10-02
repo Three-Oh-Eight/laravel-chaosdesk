@@ -11,7 +11,8 @@ use ThreeOhEight\ChaosDesk\Community\ThreadKind;
  *
  * `charter` and `member` are only present when the board was fetched for a
  * member (CommunityMemberClient::board()); the site-level board list leaves
- * them null.
+ * them null. `charterLocale` is `charter.locale`: the language the charter
+ * was served in, null for the default body or when the API reports none.
  */
 final readonly class Board
 {
@@ -26,6 +27,7 @@ final readonly class Board
         public int $charterVersion,
         public ?Charter $charter = null,
         public ?MemberStatus $member = null,
+        public ?string $charterLocale = null,
     ) {}
 
     /**
@@ -44,6 +46,7 @@ final readonly class Board
             Values::int($data, 'charter_version', 1),
             $charter === null ? null : Charter::fromArray($charter),
             $member === null ? null : MemberStatus::fromArray($member),
+            Values::nullableString($charter ?? [], 'locale'),
         );
     }
 

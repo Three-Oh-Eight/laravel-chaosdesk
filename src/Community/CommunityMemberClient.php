@@ -37,6 +37,8 @@ final class CommunityMemberClient extends CommunityClient
 {
     public const MEMBER_HEADER = 'X-Community-Member';
 
+    public const LOCALE_HEADER = 'Accept-Language';
+
     public function __construct(string $site, private readonly Member $member)
     {
         parent::__construct($site);
@@ -219,13 +221,19 @@ final class CommunityMemberClient extends CommunityClient
     }
 
     /**
-     * The site token plus the acting member.
+     * The site token, the acting member and the application's current locale.
+     *
+     * Built for every request, reads and writes alike, so ChaosDesk can serve
+     * the board charter in the language the member is browsing in.
      *
      * @return array<string, string>
      */
     protected function authenticationHeaders(): array
     {
-        return parent::authenticationHeaders() + [self::MEMBER_HEADER => $this->member->header()];
+        return parent::authenticationHeaders() + [
+            self::MEMBER_HEADER => $this->member->header(),
+            self::LOCALE_HEADER => app()->getLocale(),
+        ];
     }
 
     /**
