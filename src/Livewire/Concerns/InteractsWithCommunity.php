@@ -11,6 +11,7 @@ use Livewire\Attributes\On;
 use ThreeOhEight\ChaosDesk\ChaosDesk;
 use ThreeOhEight\ChaosDesk\Community\CommunityMemberClient;
 use ThreeOhEight\ChaosDesk\Community\Data\Board;
+use ThreeOhEight\ChaosDesk\Community\Member;
 use ThreeOhEight\ChaosDesk\Exceptions\ChaosDeskException;
 use ThreeOhEight\ChaosDesk\Exceptions\CommunityException;
 use ThreeOhEight\ChaosDesk\Support\CommunityText;
@@ -167,6 +168,9 @@ trait InteractsWithCommunity
 
     /**
      * The Community API acting as the signed-in user, on the configured site.
+     *
+     * Null for a guest, and for a user without the name or email ChaosDesk
+     * requires, after showing why.
      */
     protected function community(): ?CommunityMemberClient
     {
@@ -176,13 +180,21 @@ trait InteractsWithCommunity
             return null;
         }
 
+        $member = Member::tryFromUser($user);
+
+        if ($member === null) {
+            $this->error = (string) __('chaosdesk::community.incomplete_member');
+
+            return null;
+        }
+
         $chaosDesk = app(ChaosDesk::class);
 
         if ($this->site !== null && $this->site !== '') {
             $chaosDesk = $chaosDesk->forSite($this->site);
         }
 
-        return $chaosDesk->community()->as($user);
+        return $chaosDesk->community()->as($member);
     }
 
     /**
@@ -193,7 +205,8 @@ trait InteractsWithCommunity
         $this->error = null;
         $community = $this->community();
 
-        if ($community === null) {
+        // A signed-in user without a name or email already got their message.
+        if ($community === null && Auth::guest()) {
             $this->error = (string) __('chaosdesk::community.guest');
         }
 

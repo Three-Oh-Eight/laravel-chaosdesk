@@ -460,9 +460,9 @@ Restyle and translate the components the same way as the support form: `php arti
 
 ## Webhooks
 
-ChaosDesk can call your application on `ticket.created`, `ticket.replied`, `ticket.status_changed`, `ticket.assigned`, the SLA events (`ticket.sla_*`) and the community events `community.thread.status_changed`, `community.post.created` (an official reply), `community.poll.opened` and `community.poll.closed`. Every delivery signs the raw request body with HMAC-SHA256 under the channel secret and sends the digest as `X-ChaosDesk-Signature: sha256=<hex>`, with the event name in `X-ChaosDesk-Event` and a unique id in `X-ChaosDesk-Delivery`.
+ChaosDesk can call your application on `ticket.created`, `ticket.replied`, `ticket.status_changed`, `ticket.assigned`, the SLA events (`ticket.sla_*`) and the community events `community.thread.status_changed`, `community.post.created` (an official reply), `community.poll.opened` and `community.poll.closed`. Every delivery sends its unix timestamp in `X-ChaosDesk-Timestamp`, signs `<timestamp>.<raw body>` with HMAC-SHA256 under the channel secret and sends the digest as `X-ChaosDesk-Signature: sha256=<hex>`, with the event name in `X-ChaosDesk-Event` and a unique id in `X-ChaosDesk-Delivery`.
 
-Verify against the raw body, never the decoded and re-encoded payload, or the digest will not match:
+Verify against the raw body, never the decoded and re-encoded payload, or the digest will not match. `Signature::verifyRequest()` reads the raw body and both headers for you:
 
 ```php
 use ThreeOhEight\ChaosDesk\Webhooks\Signature;
@@ -474,10 +474,7 @@ class ChaosDeskWebhookController
     {
         $secret = (string) config('services.chaosdesk.webhook_secret');
 
-        abort_unless(
-            Signature::verify($request->getContent(), $request->header('X-ChaosDesk-Signature'), $secret),
-            401,
-        );
+        abort_unless(Signature::verifyRequest($request, $secret), 401);
 
         $delivery = (string) $request->header('X-ChaosDesk-Delivery');
 
@@ -497,11 +494,13 @@ class ChaosDeskWebhookController
 }
 ```
 
-`Signature::verify()` compares in constant time; a missing or malformed header, or an empty secret, never verifies. Exempt the route from CSRF and keep `X-ChaosDesk-Delivery` around for a while: ChaosDesk retries failed deliveries, so the same delivery id can arrive more than once.
+`Signature::verify($rawBody, $signature, $secret, $timestamp)` compares in constant time; a missing or malformed header, an empty secret, a malformed timestamp or one more than `chaosdesk.webhooks.tolerance` seconds (`CHAOSDESK_WEBHOOK_TOLERANCE`, default 300) away from now never verifies, so a captured delivery cannot be replayed later. Pass a tolerance as the last argument to override the config. Exempt the route from CSRF and keep `X-ChaosDesk-Delivery` around for at least the tolerance window: ChaosDesk retries failed deliveries, so the same delivery id can arrive more than once.
 
-`Signature::sign($rawBody, $secret)` produces the header value ChaosDesk would send, which is what you want in a test.
+Deprecated, removed in the next release: a delivery without `X-ChaosDesk-Timestamp` still verifies against the body alone, for a ChaosDesk that does not send the timestamp yet. Set `chaosdesk.webhooks.require_timestamp` (`CHAOSDESK_WEBHOOK_REQUIRE_TIMESTAMP=true`) to refuse those once yours does.
 
-`Webhooks\WebhookEvent` holds a constant per event plus the header names (`HEADER`, `DELIVERY_HEADER`, `SIGNATURE_HEADER`); `WebhookEvent::community()` lists the community events and `isCommunity($event)` tells them apart. Generic deliveries carry the event details under `metadata`:
+`Signature::headers($rawBody, $secret)` produces both headers ChaosDesk would send (signed now, or at the timestamp you pass), and `Signature::sign($rawBody, $secret, $timestamp)` the signature alone, which is what you want in a test.
+
+`Webhooks\WebhookEvent` holds a constant per event plus the header names (`HEADER`, `DELIVERY_HEADER`, `SIGNATURE_HEADER`, `TIMESTAMP_HEADER`); `WebhookEvent::community()` lists the community events and `isCommunity($event)` tells them apart. Generic deliveries carry the event details under `metadata`:
 
 | Event | Metadata |
 | --- | --- |

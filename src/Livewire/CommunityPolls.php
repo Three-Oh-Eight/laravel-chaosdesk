@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ThreeOhEight\ChaosDesk\Livewire;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 use ThreeOhEight\ChaosDesk\Community\CommunityMemberClient;
 use ThreeOhEight\ChaosDesk\Community\Data\Board;
@@ -62,6 +63,11 @@ class CommunityPolls extends Component
      * The results of every closed poll on the page, keyed by poll ulid. A
      * poll whose results cannot be fetched is left out.
      *
+     * The list endpoint carries no tally, so each closed poll costs a call.
+     * A closed tally is the same for every member of the board, so it is
+     * cached for `chaosdesk.community.results_ttl` seconds: later renders
+     * and other members do not fetch it again. A refusal is never cached.
+     *
      * @return array<string, PollResults>
      */
     public function getResultsProperty(): array
@@ -72,6 +78,7 @@ class CommunityPolls extends Component
             return [];
         }
 
+        $ttl = $this->resultsTtl();
         $results = [];
 
         foreach ($this->polls ?? [] as $poll) {
@@ -79,10 +86,23 @@ class CommunityPolls extends Component
                 continue;
             }
 
+            $key = $this->resultsCacheKey($poll->ulid);
+            $cached = $ttl > 0 ? Cache::get($key) : null;
+
+            if (is_array($cached)) {
+                $results[$poll->ulid] = PollResults::fromArray($cached);
+
+                continue;
+            }
+
             try {
                 $results[$poll->ulid] = $community->pollResults($this->board, $poll->ulid);
             } catch (ChaosDeskException) {
                 continue;
+            }
+
+            if ($ttl > 0) {
+                Cache::put($key, $results[$poll->ulid]->toArray(), $ttl);
             }
         }
 
@@ -155,6 +175,21 @@ class CommunityPolls extends Component
     protected function rememberAnswer(Poll $poll): void
     {
         $this->answers[$poll->ulid] = $poll->isMultipleChoice ? $poll->myOptions : ($poll->myOptions[0] ?? '');
+    }
+
+    protected function resultsTtl(): int
+    {
+        $ttl = config('chaosdesk.community.results_ttl', 600);
+
+        return is_numeric($ttl) ? max(0, (int) $ttl) : 600;
+    }
+
+    /**
+     * Per site, board and poll: the same ulid never collides across sites.
+     */
+    protected function resultsCacheKey(string $poll): string
+    {
+        return 'chaosdesk:community:poll-results:'.hash('sha256', ($this->site ?: 'default')."\0".$this->board."\0".$poll);
     }
 
     protected function findPoll(string $ulid): ?Poll

@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
 
     'guest' => 'Melde dich an, um bei der Community mitzumachen.',
+    'incomplete_member' => 'Dein Konto braucht einen Namen und eine E-Mail-Adresse, um bei der Community mitzumachen.',
     'blocked' => 'Du kannst mitlesen, aber in diesem Board nicht mehr posten oder abstimmen.',
 
     'board' => [

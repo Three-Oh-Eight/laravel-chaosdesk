@@ -17,6 +17,7 @@ declare(strict_types=1);
 return [
 
     'guest' => 'Sign in to take part in the community.',
+    'incomplete_member' => 'Your account needs a name and an email address to take part in the community.',
     'blocked' => 'You can read along, but you can no longer post or vote on this board.',
 
     'board' => [

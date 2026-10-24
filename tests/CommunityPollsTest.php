@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use ThreeOhEight\ChaosDesk\Livewire\CommunityCharter;
 use ThreeOhEight\ChaosDesk\Livewire\CommunityPolls;
+use ThreeOhEight\ChaosDesk\Tests\Support\PlainUser;
+use ThreeOhEight\ChaosDesk\Tests\Support\User;
 
 const POLL_ULID = '01JPOLL0000000000000000000';
 const OPTION_A = '01JOPTIONA0000000000000000';
@@ -173,6 +175,67 @@ it('renders the charter instead of the polls until the member accepted it', func
     Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
         ->assertSeeLivewire(CommunityCharter::class)
         ->assertDontSee('What should we build next?');
+});
+
+it('fetches the tally of a closed poll once and serves later renders from the cache', function (): void {
+    fakeCommunityMember(overrides: pollListStub(['is_open' => false, 'is_closed' => true]));
+    communityUser();
+
+    $resultsCalls = fn (): int => communityRequests()
+        ->filter(fn (Request $request): bool => str_ends_with($request->url(), '/polls/'.POLL_ULID.'/results'))
+        ->count();
+
+    Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
+        ->assertSee('8 respondents')
+        ->call('$refresh')
+        ->assertSee('8 respondents');
+
+    // Another member on the same board.
+    test()->actingAs(User::create(['name' => 'Grace', 'email' => 'grace@example.test', 'password' => 'x']));
+
+    Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
+        ->assertSee('8 respondents');
+
+    expect($resultsCalls())->toBe(1);
+});
+
+it('fetches the tally on every render when the cache is off', function (): void {
+    config()->set('chaosdesk.community.results_ttl', 0);
+    fakeCommunityMember(overrides: pollListStub(['is_open' => false, 'is_closed' => true]));
+    communityUser();
+
+    Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
+        ->call('$refresh');
+
+    expect(communityRequests()->filter(fn (Request $request): bool => str_ends_with($request->url(), '/results'))->count())->toBe(2);
+});
+
+it('never caches a tally ChaosDesk still hides', function (): void {
+    fakeCommunityMember(overrides: pollListStub(['is_open' => false, 'is_closed' => true]) + [
+        '*/public/community/boards/*/polls/*/results' => Http::response(['error' => 'poll_results_hidden'], 403),
+    ]);
+    communityUser();
+
+    Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
+        ->call('$refresh')
+        ->assertSee('Results are not available yet.');
+
+    expect(communityRequests()->filter(fn (Request $request): bool => str_ends_with($request->url(), '/results'))->count())->toBe(2);
+});
+
+it('shows a member without an email why they cannot take part instead of failing', function (): void {
+    fakeCommunityMember();
+    test()->actingAs(PlainUser::query()->create(['name' => 'No Email']));
+
+    Livewire::test(CommunityPolls::class, ['board' => 'gurus'])
+        ->assertOk()
+        ->assertSee('Your account needs a name and an email address to take part in the community.')
+        ->assertDontSee('What should we build next?')
+        ->set('answers.'.POLL_ULID, OPTION_A)
+        ->call('respond', POLL_ULID)
+        ->assertOk();
+
+    expect(communityRequests())->toBeEmpty();
 });
 
 it('asks a guest to sign in', function (): void {

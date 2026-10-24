@@ -39,14 +39,25 @@ final readonly class Member
      */
     public static function fromUser(Authenticatable $user, ?string $locale = null): self
     {
+        return self::tryFromUser($user, $locale) ?? throw new InvalidArgumentException(
+            'A community member needs an external id, a name and an email address; the user is missing one of them.'
+        );
+    }
+
+    /**
+     * Build the member from a user, or null when the user has no external
+     * id, name or email: ChaosDesk requires all three, so such a user cannot
+     * take part. The community components use this to show a message instead
+     * of failing.
+     */
+    public static function tryFromUser(Authenticatable $user, ?string $locale = null): ?self
+    {
         $externalId = Identity::externalId($user);
         $name = Identity::name($user);
         $email = Identity::email($user);
 
-        if ($externalId === null || $name === null || $email === null) {
-            throw new InvalidArgumentException(
-                'A community member needs an external id, a name and an email address; the user is missing one of them.'
-            );
+        if ($externalId === null || $externalId === '' || $name === null || $email === null) {
+            return null;
         }
 
         $userLocale = data_get($user, 'locale');

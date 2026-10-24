@@ -63,11 +63,12 @@ final readonly class Board
     /**
      * Whether the member has to accept the current charter before posting or voting.
      *
-     * False when the board was not fetched for a member.
+     * False when the board was not fetched for a member, and for a blank
+     * charter: there is nothing to accept.
      */
     public function needsCharterAcceptance(): bool
     {
-        return $this->charter !== null && ! $this->charter->accepted;
+        return $this->charter !== null && ! $this->charter->accepted && ! $this->charter->isBlank();
     }
 
     /**

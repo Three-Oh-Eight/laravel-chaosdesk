@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
 
     'guest' => 'Log in om mee te doen met de community.',
+    'incomplete_member' => 'Je account heeft een naam en een e-mailadres nodig om mee te doen met de community.',
     'blocked' => 'Je kunt meelezen, maar je kunt op dit board niet meer posten of stemmen.',
 
     'board' => [

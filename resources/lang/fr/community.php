@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
 
     'guest' => 'Connectez-vous pour participer à la communauté.',
+    'incomplete_member' => 'Votre compte doit comporter un nom et une adresse e-mail pour participer à la communauté.',
     'blocked' => 'Vous pouvez lire, mais vous ne pouvez plus publier ni voter sur ce forum.',
 
     'board' => [

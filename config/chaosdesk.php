@@ -143,6 +143,28 @@ return [
 
         // Threads per page on the board, at most 50.
         'per_page' => 20,
+
+        // Seconds the tally of a closed poll is cached, shared by every
+        // member of the board; 0 fetches it on every render.
+        'results_ttl' => 600,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Webhooks
+    |--------------------------------------------------------------------------
+    |
+    | Signature::verify() refuses a delivery whose signed X-ChaosDesk-Timestamp
+    | is more than `tolerance` seconds away from now. A delivery without the
+    | timestamp still verifies against the body alone until you require it;
+    | turn `require_timestamp` on once your ChaosDesk sends the header. The
+    | body-only fallback is removed in the next release.
+    |
+    */
+
+    'webhooks' => [
+        'tolerance' => (int) env('CHAOSDESK_WEBHOOK_TOLERANCE', 300),
+        'require_timestamp' => (bool) env('CHAOSDESK_WEBHOOK_REQUIRE_TIMESTAMP', false),
     ],
 
     /*

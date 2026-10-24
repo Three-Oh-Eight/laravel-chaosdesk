@@ -33,6 +33,14 @@ final readonly class Charter
     }
 
     /**
+     * Whether the charter has no text: null, empty or whitespace only.
+     */
+    public function isBlank(): bool
+    {
+        return $this->markdown === null || trim($this->markdown) === '';
+    }
+
+    /**
      * The `locale` key is only present when the API reported one.
      *
      * @return array{markdown: string|null, version: int, accepted: bool, locale?: string}

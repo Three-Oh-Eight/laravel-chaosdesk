@@ -132,6 +132,42 @@ it('refuses a user without a name or email before any request', function (): voi
     Http::assertNothingSent();
 });
 
+it('returns null instead of throwing for a user without a name or email', function (): void {
+    $noEmail = PlainUser::query()->create(['name' => 'No Email']);
+    $noName = PlainUser::query()->create(['email' => 'nameless@example.test']);
+    $complete = PlainUser::query()->create(['name' => 'Ada', 'email' => 'ada@example.test']);
+
+    expect(Member::tryFromUser($noEmail))->toBeNull()
+        ->and(Member::tryFromUser($noName))->toBeNull()
+        ->and(Member::tryFromUser($complete)?->toArray())->toBe([
+            'external_id' => (string) $complete->getKey(),
+            'name' => 'Ada',
+            'email' => 'ada@example.test',
+        ]);
+});
+
+it('treats a blank charter as nothing to accept', function (?string $markdown): void {
+    $board = Board::fromArray(communityBoardPayload([
+        'charter' => ['markdown' => $markdown, 'version' => 1, 'accepted' => false],
+    ]));
+
+    expect($board->charter?->isBlank())->toBeTrue()
+        ->and($board->needsCharterAcceptance())->toBeFalse();
+})->with([
+    'null' => [null],
+    'empty' => [''],
+    'whitespace' => [" \n\t "],
+]);
+
+it('still asks to accept a charter with text', function (): void {
+    $board = Board::fromArray(communityBoardPayload([
+        'charter' => ['markdown' => ' Be kind. ', 'version' => 1, 'accepted' => false],
+    ]));
+
+    expect($board->charter?->isBlank())->toBeFalse()
+        ->and($board->needsCharterAcceptance())->toBeTrue();
+});
+
 it('fetches a board with its charter and the member state', function (): void {
     fakeChaosDeskCommunity();
 

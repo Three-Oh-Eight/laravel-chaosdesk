@@ -4,6 +4,34 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-24
+
+### Security
+
+- Webhook replay protection: `Webhooks\Signature::verify()` takes the `X-ChaosDesk-Timestamp` value and checks the signature over `<timestamp>.<raw body>`, refusing a malformed timestamp or one more than `chaosdesk.webhooks.tolerance` seconds (`CHAOSDESK_WEBHOOK_TOLERANCE`, default 300) away from now; an explicit tolerance argument overrides the config. A body shaped like a timestamped signing input is refused on the body-only path, so a timestamped signature cannot be downgraded.
+
+### Added
+
+- `Signature::verifyRequest($request, $secret)` reading the raw body and both headers, `Signature::headers($body, $secret, $timestamp = null)` for tests, an optional `$timestamp` on `Signature::sign()` and `WebhookEvent::TIMESTAMP_HEADER`.
+- `chaosdesk.webhooks.require_timestamp` (`CHAOSDESK_WEBHOOK_REQUIRE_TIMESTAMP`, default false) to refuse deliveries without a timestamp.
+- `Community\Member::tryFromUser()`: null instead of an exception for a user without an external id, name or email.
+- `Community\Data\Charter::isBlank()`.
+- `chaosdesk.community.results_ttl` (default 600 seconds): `Livewire\CommunityPolls` caches the tally of a closed poll per site, board and poll, so later renders and other members do not fetch it again; a refusal is never cached, and 0 turns the cache off.
+- `chaosdesk::community.incomplete_member` in en, nl, fr and de.
+
+### Fixed
+
+- The community components no longer fail with an `InvalidArgumentException` for a signed-in user without a name or email; they show `incomplete_member` and send nothing.
+- `Board::needsCharterAcceptance()` is false for a blank charter (null, empty or whitespace only): there is nothing to accept.
+
+### Deprecated
+
+- A webhook delivery without `X-ChaosDesk-Timestamp` still verifies against the body alone, because ChaosDesk does not send the timestamp yet. The body-only path is removed in the next release.
+
+### Changed
+
+- `ChaosDesk::VERSION` is `1.3.1`, reported in `context.sdk` and the `User-Agent`.
+
 ## [1.3.0] - 2026-10-02
 
 ### Added
@@ -69,7 +97,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - `Http\Controllers\TicketController` and `Http\Requests\StoreTicketRequest` behind `ChaosDesk::routes()` for mobile clients.
 - Publish tags `chaosdesk-config`, `chaosdesk-views` and `chaosdesk-assets`.
 
-[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.0.0...v1.1.0

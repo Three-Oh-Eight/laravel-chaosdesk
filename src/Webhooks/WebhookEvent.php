@@ -35,6 +35,11 @@ final class WebhookEvent
      */
     public const SIGNATURE_HEADER = 'X-ChaosDesk-Signature';
 
+    /**
+     * The request header carrying the unix timestamp the signature covers; see Signature.
+     */
+    public const TIMESTAMP_HEADER = 'X-ChaosDesk-Timestamp';
+
     public const TICKET_CREATED = 'ticket.created';
 
     public const TICKET_REPLIED = 'ticket.replied';

@@ -28,7 +28,7 @@ class ChaosDesk
 {
     use TalksToChaosDesk;
 
-    public const VERSION = '1.3.0';
+    public const VERSION = '1.3.1';
 
     public function __construct(
         protected ContextCollector $context,
