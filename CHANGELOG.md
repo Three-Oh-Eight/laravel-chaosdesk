@@ -4,6 +4,22 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-25
+
+### Added
+
+- An optional, trailing `?string $idempotencyKey = null` on `ChaosDesk::createTicket()`, `ChaosDesk::reply()`, `ChaosDesk::attach()`, `ChaosDesk::attachContents()`, `AgentClient::reply()` and `AgentClient::note()`, as the community writes already had. Pass a stable key (one per queued job or per incoming request) so a retry of your own replays the first response instead of posting twice; null or an empty string keeps the fresh key per call.
+
+### Fixed
+
+- Retries are limited to transient failures: a connection failure, a 5xx or a 429. A 4xx (401, 403, 404, 422, ...) is no longer sent a second time.
+- A write is only retried when that is safe: GET, HEAD, OPTIONS, PUT and DELETE always, any other method only when it carries an `Idempotency-Key`. `AgentClient::update()` (PATCH) and `AgentClient::anonymiseAuthor()` are no longer repeated after a timeout.
+- `attachContents()` (and so `attach()`) now sends an `Idempotency-Key`, so a retried upload is not stored twice by a ChaosDesk that honours the key.
+
+### Changed
+
+- `ChaosDesk::VERSION` is `1.3.2`, reported in `context.sdk` and the `User-Agent`.
+
 ## [1.3.1] - 2026-10-24
 
 ### Security
@@ -97,7 +113,8 @@ All notable changes to this package are documented here. The format follows [Kee
 - `Http\Controllers\TicketController` and `Http\Requests\StoreTicketRequest` behind `ChaosDesk::routes()` for mobile clients.
 - Publish tags `chaosdesk-config`, `chaosdesk-views` and `chaosdesk-assets`.
 
-[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Three-Oh-Eight/laravel-chaosdesk/compare/v1.1.0...v1.2.0

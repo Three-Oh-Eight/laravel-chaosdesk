@@ -28,7 +28,7 @@ class ChaosDesk
 {
     use TalksToChaosDesk;
 
-    public const VERSION = '1.3.1';
+    public const VERSION = '1.3.2';
 
     public function __construct(
         protected ContextCollector $context,
@@ -97,18 +97,20 @@ class ChaosDesk
      *
      * @param  array<string, mixed>  $attributes  email, name, subject, message, category_id, priority_id, custom_fields
      * @param  array<string, mixed>  $clientContext  context reported by the browser or a mobile client
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed> the created ticket plus its access_token
      */
     public function createTicket(
         array $attributes,
         array $clientContext = [],
         ?Authenticatable $user = null,
+        ?string $idempotencyKey = null,
     ): array {
         $payload = $attributes + [
             'context' => $this->context->collect($clientContext, $user),
         ];
 
-        return $this->post('public/tickets', $payload, headers: $this->idempotencyHeaders());
+        return $this->post('public/tickets', $payload, headers: $this->idempotencyHeaders($idempotencyKey));
     }
 
     /**
@@ -124,38 +126,55 @@ class ChaosDesk
     /**
      * Add a customer reply to a ticket.
      *
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed>
      */
-    public function reply(string $ulid, string $accessToken, string $body): array
+    public function reply(string $ulid, string $accessToken, string $body, ?string $idempotencyKey = null): array
     {
         return $this->post(
             "public/tickets/{$ulid}/messages",
             ['body' => $body],
             ['access_token' => $accessToken],
-            $this->idempotencyHeaders(),
+            $this->idempotencyHeaders($idempotencyKey),
         );
     }
 
     /**
      * Attach a file to a ticket.
      *
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed>
      */
-    public function attach(string $ulid, string $accessToken, UploadedFile $file): array
+    public function attach(string $ulid, string $accessToken, UploadedFile $file, ?string $idempotencyKey = null): array
     {
-        return $this->attachContents($ulid, $accessToken, (string) $file->get(), $file->getClientOriginalName());
+        return $this->attachContents(
+            $ulid,
+            $accessToken,
+            (string) $file->get(),
+            $file->getClientOriginalName(),
+            $idempotencyKey,
+        );
     }
 
     /**
      * Attach raw file contents, for example a screenshot decoded from a data URL.
      *
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed>
      */
-    public function attachContents(string $ulid, string $accessToken, string $contents, string $filename): array
-    {
-        return $this->send(fn (PendingRequest $request): Response => $request
-            ->attach('file', $contents, $filename)
-            ->post($this->url("public/tickets/{$ulid}/attachments", ['access_token' => $accessToken])));
+    public function attachContents(
+        string $ulid,
+        string $accessToken,
+        string $contents,
+        string $filename,
+        ?string $idempotencyKey = null,
+    ): array {
+        return $this->send(
+            fn (PendingRequest $request): Response => $request
+                ->attach('file', $contents, $filename)
+                ->post($this->url("public/tickets/{$ulid}/attachments", ['access_token' => $accessToken])),
+            $this->idempotencyHeaders($idempotencyKey),
+        );
     }
 
     /**

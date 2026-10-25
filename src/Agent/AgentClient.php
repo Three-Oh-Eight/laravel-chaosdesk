@@ -74,14 +74,20 @@ final class AgentClient
     /**
      * Reply to a ticket as an agent, optionally as an internal message.
      *
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed> the created message
      */
-    public function reply(string $ulid, string $body, bool $internal = false, ?string $agentName = null): array
-    {
+    public function reply(
+        string $ulid,
+        string $body,
+        bool $internal = false,
+        ?string $agentName = null,
+        ?string $idempotencyKey = null,
+    ): array {
         $response = $this->post(
             "tickets/{$ulid}/messages",
             $this->withAgentName(['body' => $body, 'is_internal' => $internal], $agentName),
-            headers: $this->idempotencyHeaders(),
+            headers: $this->idempotencyHeaders($idempotencyKey),
         );
 
         return $this->unwrap($response, 'reply');
@@ -90,14 +96,15 @@ final class AgentClient
     /**
      * Leave an internal note on a ticket; the requester never sees it.
      *
+     * @param  string|null  $idempotencyKey  a stable key so your own retries replay the first response; a fresh one per call when null
      * @return array<string, mixed> the created note
      */
-    public function note(string $ulid, string $body, ?string $agentName = null): array
+    public function note(string $ulid, string $body, ?string $agentName = null, ?string $idempotencyKey = null): array
     {
         $response = $this->post(
             "tickets/{$ulid}/notes",
             $this->withAgentName(['body' => $body], $agentName),
-            headers: $this->idempotencyHeaders(),
+            headers: $this->idempotencyHeaders($idempotencyKey),
         );
 
         return $this->unwrap($response, 'note');

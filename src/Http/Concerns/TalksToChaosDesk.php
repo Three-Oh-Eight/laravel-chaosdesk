@@ -7,11 +7,14 @@ namespace ThreeOhEight\ChaosDesk\Http\Concerns;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use ThreeOhEight\ChaosDesk\ChaosDesk;
 use ThreeOhEight\ChaosDesk\Exceptions\ChaosDeskException;
+use Throwable;
 
 /**
  * The HTTP plumbing shared by the ingest client and the agent client.
@@ -100,17 +103,19 @@ trait TalksToChaosDesk
     }
 
     /**
-     * A fresh idempotency key for one logical write.
+     * The idempotency key for one logical write: the caller's, or a fresh one.
      *
      * The key is set on the pending request before the retry loop, so every
      * retry of the same call carries it and ChaosDesk replays the first
-     * response instead of creating a duplicate.
+     * response instead of creating a duplicate. A caller that retries the
+     * write itself (a queued job, an API client) passes a stable key so its
+     * own retries replay too.
      *
      * @return array<string, string>
      */
-    protected function idempotencyHeaders(): array
+    protected function idempotencyHeaders(?string $key = null): array
     {
-        return ['Idempotency-Key' => (string) Str::uuid()];
+        return ['Idempotency-Key' => $key === null || $key === '' ? (string) Str::uuid() : $key];
     }
 
     /**
@@ -118,12 +123,52 @@ trait TalksToChaosDesk
      */
     protected function request(array $headers = []): PendingRequest
     {
+        $sent = null;
+
         return Http::withHeaders($headers + $this->authenticationHeaders() + [
             'Accept' => 'application/json',
             'User-Agent' => 'laravel-chaosdesk/'.ChaosDesk::VERSION,
         ])
             ->timeout((int) config('chaosdesk.timeout', 10))
-            ->retry((int) config('chaosdesk.retries', 2), 200, throw: false);
+            ->beforeSending(function (Request $request) use (&$sent): void {
+                $sent = $request;
+            })
+            ->retry(
+                (int) config('chaosdesk.retries', 2),
+                200,
+                function (Throwable $e) use (&$sent): bool {
+                    return $sent instanceof Request && $this->shouldRetry($e, $sent);
+                },
+                throw: false,
+            );
+    }
+
+    /**
+     * Whether a failed attempt is worth repeating.
+     *
+     * Only a transient failure is retried: no connection, a 5xx or a 429. A
+     * 4xx answer will not change on a second try. A write is only repeated
+     * when it is safe to: an idempotent method (GET, HEAD, OPTIONS, PUT,
+     * DELETE), or any other method carrying an Idempotency-Key, so ChaosDesk
+     * replays the first response instead of applying the write twice.
+     *
+     * The request is the one last handed to the transport, captured in a
+     * beforeSending callback, so the method and headers are what was sent.
+     */
+    protected function shouldRetry(Throwable $e, Request $request): bool
+    {
+        $transient = $e instanceof ConnectionException
+            || ($e instanceof RequestException && ($e->response->serverError() || $e->response->status() === 429));
+
+        if (! $transient) {
+            return false;
+        }
+
+        if (in_array(strtoupper($request->method()), ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'], true)) {
+            return true;
+        }
+
+        return ($request->header('Idempotency-Key')[0] ?? '') !== '';
     }
 
     /**

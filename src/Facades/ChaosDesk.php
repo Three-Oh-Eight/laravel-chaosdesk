@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Facade;
 
 /**
  * @method static array config()
- * @method static array createTicket(array $attributes, array $clientContext = [], ?\Illuminate\Contracts\Auth\Authenticatable $user = null)
+ * @method static array createTicket(array $attributes, array $clientContext = [], ?\Illuminate\Contracts\Auth\Authenticatable $user = null, ?string $idempotencyKey = null)
  * @method static array ticket(string $ulid, string $accessToken)
- * @method static array reply(string $ulid, string $accessToken, string $body)
- * @method static array attach(string $ulid, string $accessToken, \Illuminate\Http\UploadedFile $file)
- * @method static array attachContents(string $ulid, string $accessToken, string $contents, string $filename)
+ * @method static array reply(string $ulid, string $accessToken, string $body, ?string $idempotencyKey = null)
+ * @method static array attach(string $ulid, string $accessToken, \Illuminate\Http\UploadedFile $file, ?string $idempotencyKey = null)
+ * @method static array attachContents(string $ulid, string $accessToken, string $contents, string $filename, ?string $idempotencyKey = null)
  * @method static \ThreeOhEight\ChaosDesk\ChaosDesk forSite(string $name)
  * @method static \ThreeOhEight\ChaosDesk\Agent\AgentClient agent(?string $site = null)
  * @method static \ThreeOhEight\ChaosDesk\Community\CommunityClient community()

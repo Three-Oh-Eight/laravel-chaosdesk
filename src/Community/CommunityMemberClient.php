@@ -260,9 +260,7 @@ final class CommunityMemberClient extends CommunityClient
      */
     private function writeHeaders(?string $idempotencyKey): array
     {
-        return $idempotencyKey === null || $idempotencyKey === ''
-            ? $this->idempotencyHeaders()
-            : ['Idempotency-Key' => $idempotencyKey];
+        return $this->idempotencyHeaders($idempotencyKey);
     }
 
     /**

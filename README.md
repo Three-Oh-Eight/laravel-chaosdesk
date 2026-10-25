@@ -140,6 +140,16 @@ Failures throw `ChaosDeskException`, which carries the HTTP status and any valid
 | `isNotFound()` | 404 |
 | `isUnavailable()` | ChaosDesk answered 5xx or could not be reached at all |
 
+### Retries and idempotency
+
+A failed call is repeated (`chaosdesk.retries` attempts in total, `CHAOSDESK_RETRIES`, default 2) only when the failure is transient: no connection, a 5xx or a 429. A 4xx is never sent twice. Reads retry freely; a write is only repeated when it carries an `Idempotency-Key`, so ChaosDesk replays the first response instead of applying it twice.
+
+`createTicket()`, `reply()`, `attach()` and `attachContents()` (and the agent `reply()` and `note()`) always send a key: a fresh one per call by default, which covers the SDK's own retries. When your application retries the call itself, from a queued job or on behalf of a client that resends its request, pass a stable key so that retry replays too:
+
+```php
+ChaosDesk::reply($ulid, $accessToken, $body, idempotencyKey: "support-reply:{$message->id}");
+```
+
 ## Diagnostic context
 
 Collected automatically and shown to agents beside the ticket:
@@ -233,8 +243,8 @@ $agent = ChaosDesk::agent('customers');   // or ChaosDesk::agent() for the defau
 | `tickets($filters, $page, $perPage)` | Lists tickets; returns the paginator (`data`, `links`, `meta`) untouched |
 | `ticket($ulid)` | One ticket with its messages (internal notes included) and attachments |
 | `update($ulid, $attributes)` | Changes `status`, `category_id`, `priority_id`, `assigned_to` or `tags` |
-| `reply($ulid, $body, $internal, $agentName)` | Replies to the requester, or internally when `$internal` is true |
-| `note($ulid, $body, $agentName)` | Leaves an internal note the requester never sees |
+| `reply($ulid, $body, $internal, $agentName, $idempotencyKey)` | Replies to the requester, or internally when `$internal` is true |
+| `note($ulid, $body, $agentName, $idempotencyKey)` | Leaves an internal note the requester never sees |
 | `anonymiseAuthor($externalId, $siteId)` | Blanks an author's name and email, for example after an account deletion |
 | `agents($siteId)` | The people a ticket on that site can be assigned to |
 | `categories($siteId)` | The site's categories |
@@ -256,7 +266,7 @@ $sites = $agent->sites();
 
 Filters pass through as query parameters; list values encode as `status[]=open&status[]=pending`. Supported filters: `site_id`, `status[]`, `assigned_to`, `unassigned`, `external_id`, `email`, `tag`, `q`, `created_from`, `created_to`, `sort`, `direction`, `include_test`.
 
-`reply()` and `note()` send a fresh `Idempotency-Key` per call, so a retried request replays the first response instead of posting the message twice. Pass `agentName` to have the reply attributed to the person acting through your token: one token typically fronts several of your admins, and ChaosDesk shows the name in its inbox, in the requester mail and in the webhook payload.
+`reply()` and `note()` send an `Idempotency-Key`, so a retried request replays the first response instead of posting the message twice: a fresh one per call, or the `idempotencyKey` you pass to make your own retries replay as well (see [Retries and idempotency](#retries-and-idempotency)). Pass `agentName` to have the reply attributed to the person acting through your token: one token typically fronts several of your admins, and ChaosDesk shows the name in its inbox, in the requester mail and in the webhook payload.
 
 `anonymiseAuthor()` is idempotent: repeating the call answers 200 again. The numeric `siteId` is what `sites()` returns; keep it in `chaosdesk.sites.{name}.site_id` so you do not fetch it on every call.
 
